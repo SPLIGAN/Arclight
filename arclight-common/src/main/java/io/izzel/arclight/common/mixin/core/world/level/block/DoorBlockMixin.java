@@ -10,6 +10,8 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BooleanProperty;
 import net.minecraft.world.level.block.state.properties.DoubleBlockHalf;
 import net.minecraft.world.level.block.state.properties.EnumProperty;
+import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.level.redstone.Orientation;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.block.CraftBlock;
 import org.bukkit.event.block.BlockRedstoneEvent;
@@ -34,7 +36,8 @@ public abstract class DoorBlockMixin {
      * @reason
      */
     @Overwrite
-    public void neighborChanged(BlockState state, Level worldIn, BlockPos pos, Block blockIn, BlockPos fromPos, boolean isMoving) {
+    // 26.1: neighborChanged now takes Orientation instead of fromPos BlockPos.
+    protected void neighborChanged(BlockState state, Level worldIn, BlockPos pos, Block blockIn, @Nullable Orientation orientation, boolean isMoving) {
         BlockPos blockPos = pos.relative(state.getValue(HALF) == DoubleBlockHalf.LOWER ? Direction.UP : Direction.DOWN);
 
         org.bukkit.block.Block bukkitBlock = CraftBlock.at(worldIn, pos);
@@ -52,6 +55,7 @@ public abstract class DoorBlockMixin {
             boolean flag = event.getNewCurrent() > 0;
             if (flag != state.getValue(OPEN)) {
                 this.playSound(null, worldIn, pos, flag);
+                worldIn.gameEvent(null, flag ? GameEvent.BLOCK_OPEN : GameEvent.BLOCK_CLOSE, pos);
             }
 
             worldIn.setBlock(pos, state.setValue(POWERED, flag).setValue(OPEN, flag), 2);

@@ -15,7 +15,6 @@ import net.minecraft.world.phys.HitResult;
 import org.bukkit.craftbukkit.entity.CraftLivingEntity;
 import org.bukkit.craftbukkit.event.CraftEventFactory;
 import org.bukkit.event.entity.EntityPotionEffectEvent;
-import org.bukkit.event.entity.EntityRemoveEvent;
 import org.bukkit.event.entity.PotionSplashEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
@@ -29,18 +28,13 @@ import java.util.List;
 import java.util.Map;
 
 @Mixin(ThrownSplashPotion.class)
-public abstract class ThrownSplashPotionMixin extends ThrowableItemProjectileMixin {
+public abstract class ThrownSplashPotionMixin extends AbstractThrownPotionMixin {
 
     @Unique private transient HitResult arclight$hitResult;
 
     @Inject(method = "onHitAsPotion", at = @At("HEAD"))
     private void arclight$captureHit(net.minecraft.server.level.ServerLevel level, net.minecraft.world.item.ItemStack stack, HitResult hitResult, CallbackInfo ci) {
         arclight$hitResult = hitResult;
-    }
-
-    @Inject(method = "onHit", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;discard()V"))
-    private void arclight$hitCause(HitResult hitResult, CallbackInfo ci) {
-        this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.HIT);
     }
 
     @Inject(method = "onHitAsPotion", at = @At("RETURN"))

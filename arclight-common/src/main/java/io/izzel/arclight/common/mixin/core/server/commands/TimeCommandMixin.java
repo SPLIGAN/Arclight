@@ -18,7 +18,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 public class TimeCommandMixin {
 
     @Redirect(method = "addTime", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/clock/ServerClockManager;addTicks(Lnet/minecraft/core/Holder;I)V"))
-    private static void arclight$addTimeEvent(CommandSourceStack source, Holder<WorldClock> clock, int ticks, ServerClockManager clockManager, Holder<WorldClock> clockArg, int ticksArg) {
+    private static void arclight$addTimeEvent(ServerClockManager clockManager, Holder<WorldClock> clockArg, int ticksArg, CommandSourceStack source, Holder<WorldClock> clock, int ticks) {
         ServerLevel level = source.getLevel();
         long current = clockManager.getTotalTicks(clockArg);
         TimeSkipEvent event = new TimeSkipEvent(((ServerLevelBridge) level).bridge$getWorld(), TimeSkipEvent.SkipReason.COMMAND, ticksArg);
@@ -29,10 +29,10 @@ public class TimeCommandMixin {
     }
 
     @Redirect(method = "setTotalTicks", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/clock/ServerClockManager;setTotalTicks(Lnet/minecraft/core/Holder;J)V"))
-    private static void arclight$setTimeEvent(CommandSourceStack source, Holder<WorldClock> clock, int time, ServerClockManager clockManager, Holder<WorldClock> clockArg, long timeArg) {
+    private static void arclight$setTimeEvent(ServerClockManager clockManager, Holder<WorldClock> clockArg, long timeArg, CommandSourceStack source, Holder<WorldClock> clock, int time) {
         ServerLevel level = source.getLevel();
         long current = ArclightLevelHelper.getDayTime(level);
-        TimeSkipEvent event = new TimeSkipEvent(((ServerLevelBridge) level).bridge$getWorld(), TimeSkipEvent.SkipReason.COMMAND, (int) timeArg - current);
+        TimeSkipEvent event = new TimeSkipEvent(((ServerLevelBridge) level).bridge$getWorld(), TimeSkipEvent.SkipReason.COMMAND, (int) (timeArg - current));
         Bukkit.getPluginManager().callEvent(event);
         if (!event.isCancelled()) {
             clockManager.setTotalTicks(clockArg, current + event.getSkipAmount());

@@ -37,8 +37,8 @@ import java.util.Map;
 public abstract class ChunkAccessMixin implements BlockGetter, BiomeManager.NoiseBiomeSource, ChunkAccessBridge {
 
     // @formatter:off
-    @Shadow public abstract void setUnsaved(boolean p_62094_);
-    @Shadow public abstract int getMinBuildHeight();
+    @Shadow public abstract void markUnsaved();
+    @Shadow public abstract int getMinY();
     @Shadow public abstract int getHeight();
     @Shadow public boolean isUnsaved() { return false; }
     @Shadow @Final protected LevelChunkSection[] sections;
@@ -52,15 +52,17 @@ public abstract class ChunkAccessMixin implements BlockGetter, BiomeManager.Nois
     public Registry<Biome> biomeRegistry;
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void arclight$init(ChunkPos p_187621_, UpgradeData p_187622_, LevelHeightAccessor p_187623_, Registry<Biome> registry, long p_187625_, LevelChunkSection[] p_187626_, BlendingData p_187627_, CallbackInfo ci) {
-        this.biomeRegistry = registry;
+    private void arclight$init(ChunkPos p_187621_, UpgradeData p_187622_, LevelHeightAccessor p_187623_, net.minecraft.world.level.chunk.PalettedContainerFactory palettedContainerFactory, long p_187625_, LevelChunkSection[] p_187626_, BlendingData p_187627_, CallbackInfo ci) {
+        if (palettedContainerFactory.biomeStrategy().globalMap() instanceof Registry<?> registry) {
+            @SuppressWarnings("unchecked")
+            Registry<Biome> biomes = (Registry<Biome>) registry;
+            this.biomeRegistry = biomes;
+        }
     }
 
-    @Inject(method = "setUnsaved", at = @At("HEAD"))
-    private void arclight$dirty(boolean flag, CallbackInfo ci) {
-        if (!flag) {
-            this.persistentDataContainer.dirty(false);
-        }
+    @Inject(method = "tryMarkSaved", at = @At("HEAD"))
+    private void arclight$dirty(CallbackInfoReturnable<Boolean> cir) {
+        this.persistentDataContainer.dirty(false);
     }
 
     @Inject(method = "isUnsaved", cancellable = true, at = @At("RETURN"))
@@ -75,7 +77,7 @@ public abstract class ChunkAccessMixin implements BlockGetter, BiomeManager.Nois
 
     public void setBiome(int i, int j, int k, Holder<Biome> biome) {
         try {
-            int l = QuartPos.fromBlock(this.getMinBuildHeight());
+            int l = QuartPos.fromBlock(this.getMinY());
             int i1 = l + QuartPos.fromBlock(this.getHeight()) - 1;
             int j1 = Mth.clamp(j, l, i1);
             int k1 = this.getSectionIndex(QuartPos.toBlock(j1));

@@ -34,7 +34,7 @@ public abstract class LevelMixin_Vanilla implements LevelAccessor, WorldBridge {
     @Shadow public abstract void setBlocksDirty(BlockPos blockPos, BlockState blockState, BlockState blockState2);
     @Shadow public abstract void sendBlockUpdated(BlockPos blockPos, BlockState blockState, BlockState blockState2, int i);
     @Shadow public abstract void updateNeighbourForOutputSignal(BlockPos blockPos, Block block);
-    @Shadow public abstract void onBlockStateChange(BlockPos blockPos, BlockState blockState, BlockState blockState2);
+    @Shadow public abstract void updatePOIOnBlockStateChange(BlockPos blockPos, BlockState blockState, BlockState blockState2);
     @Shadow public abstract void neighborChanged(BlockPos pos, Block block, net.minecraft.world.level.redstone.Orientation orientation);
     // @formatter:on
 
@@ -128,7 +128,7 @@ public abstract class LevelMixin_Vanilla implements LevelAccessor, WorldBridge {
                         blockState.updateIndirectNeighbourShapes(this, blockPos, k, j - 1);
                     }
 
-                    this.onBlockStateChange(blockPos, blockState2, blockState3);
+                    this.updatePOIOnBlockStateChange(blockPos, blockState2, blockState3);
                 }
 
                 return true;
@@ -151,7 +151,7 @@ public abstract class LevelMixin_Vanilla implements LevelAccessor, WorldBridge {
         }
     }
 
-    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", require = 0, cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;onBlockStateChange(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/state/BlockState;)V"))
+    @Inject(method = "setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;II)Z", require = 0, cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;updatePOIOnBlockStateChange(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/block/state/BlockState;)V"))
     private void arclight$preventPoiUpdate(BlockPos blockPos, BlockState blockState, int i, int j, CallbackInfoReturnable<Boolean> cir) {
         if (bridge$preventPoiUpdated()) {
             cir.setReturnValue(true);

@@ -2,7 +2,6 @@ package io.izzel.arclight.common.mixin.core.world.entity.projectile;
 
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
-import io.izzel.arclight.common.mod.util.ArclightNbtHelper;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.storage.ValueInput;
@@ -39,7 +38,7 @@ public abstract class LargeFireballMixin extends AbstractHurtingProjectileMixin 
         }
     }
 
-    @Inject(method = "onHit", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/LargeFireball;discard()V"))
+    @Inject(method = "onHit", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/hurtingprojectile/LargeFireball;discard()V"))
     private void arclight$explode(HitResult hitResult, CallbackInfo ci) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.HIT);
     }
@@ -56,8 +55,8 @@ public abstract class LargeFireballMixin extends AbstractHurtingProjectileMixin 
         }
     }
 
-    @Inject(method = "readAdditionalSaveData", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/storage/ValueInput;getIntOr(Ljava/lang/String;I)I"))
+    @Inject(method = "readAdditionalSaveData", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/storage/ValueInput;getByteOr(Ljava/lang/String;B)B"))
     private void arclight$setYield(ValueInput input, CallbackInfo ci) {
-        this.bukkitYield = ArclightNbtHelper.getInt(input, "ExplosionPower");
+        this.bukkitYield = input.getByteOr("ExplosionPower", (byte) 1);
     }
 }

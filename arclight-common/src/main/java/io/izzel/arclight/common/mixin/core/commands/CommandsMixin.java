@@ -1,10 +1,8 @@
 package io.izzel.arclight.common.mixin.core.commands;
 
 import com.google.common.collect.Maps;
-import com.mojang.brigadier.Command;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
-import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.tree.CommandNode;
 import com.mojang.brigadier.tree.RootCommandNode;
 import io.izzel.arclight.common.bridge.core.commands.CommandsBridge;
@@ -17,7 +15,6 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.ExecutionCommandSource;
 import net.minecraft.commands.SharedSuggestionProvider;
-import net.minecraft.commands.synchronization.SuggestionProviders;
 import net.minecraft.network.protocol.game.ClientboundCommandsPacket;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -34,7 +31,6 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 
 import java.util.LinkedHashSet;
 import java.util.Map;
-import java.util.function.Function;
 
 @Mixin(Commands.class)
 public abstract class CommandsMixin implements CommandsBridge {
@@ -43,7 +39,7 @@ public abstract class CommandsMixin implements CommandsBridge {
     @Shadow public abstract void performCommand(ParseResults<CommandSourceStack> p_242844_, String p_242841_);
     @Shadow public abstract void performPrefixedCommand(CommandSourceStack p_230958_, String p_230959_);
     @Mutable @Shadow @Final private CommandDispatcher<CommandSourceStack> dispatcher;
-    @Shadow protected abstract void fillUsableCommands(CommandNode<CommandSourceStack> rootCommandSource, CommandNode<SharedSuggestionProvider> rootSuggestion, CommandSourceStack source, Map<CommandNode<CommandSourceStack>, CommandNode<SharedSuggestionProvider>> commandNodeToSuggestionNode);
+    @Shadow private static <S> void fillUsableCommands(CommandNode<S> rootCommandSource, CommandNode<S> rootSuggestion, S source, Map<CommandNode<S>, CommandNode<S>> commandNodeToSuggestionNode) {}
     @Shadow static ClientboundCommandsPacket.NodeInspector<SharedSuggestionProvider> COMMAND_NODE_INSPECTOR;
     // @formatter:on
 
@@ -96,22 +92,11 @@ public abstract class CommandsMixin implements CommandsBridge {
     }
 
     @Redirect(method = "fillUsableCommands", at = @At(value = "INVOKE", remap = false, target = "Lcom/mojang/brigadier/tree/CommandNode;canUse(Ljava/lang/Object;)Z"))
-    private <S> boolean arclight$canUse(CommandNode<S> commandNode, S source) {
+    private static <S> boolean arclight$canUse(CommandNode<S> commandNode, S source) {
         return CommandNodeHooks.canUse(commandNode, source);
     }
 
     private static MinecraftServer arclight$getServer(ServerPlayer player) {
         return player.level().getServer();
-    }
-
-    @Override
-    public <S, T> void bridge$forge$mergeNode(CommandNode<S> sourceNode, CommandNode<T> resultNode,
-                                              Map<CommandNode<S>, CommandNode<T>> sourceToResult,
-                                              S canUse, Command<T> execute,
-                                              Function<SuggestionProvider<S>, SuggestionProvider<T>> sourceToResultSuggestion) {
-        fillUsableCommands((CommandNode<CommandSourceStack>) sourceNode,
-                (CommandNode<SharedSuggestionProvider>) resultNode,
-                (CommandSourceStack) canUse,
-                (Map<CommandNode<CommandSourceStack>, CommandNode<SharedSuggestionProvider>>) (Map<?, ?>) sourceToResult);
     }
 }

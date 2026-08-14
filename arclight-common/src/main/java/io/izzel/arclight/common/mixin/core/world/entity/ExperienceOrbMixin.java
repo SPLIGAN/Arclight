@@ -4,7 +4,6 @@ import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
@@ -21,7 +20,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
@@ -32,8 +30,9 @@ public abstract class ExperienceOrbMixin extends EntityMixin {
 
     // @formatter:off
     @Shadow private Player followingPlayer;
-    @Shadow public abstract boolean hurt(DamageSource source, float amount);
-    @Shadow public int value;
+    // 26.1: XP value is synched via DATA_VALUE; use accessors instead of a public field.
+    @Shadow public abstract int getValue();
+    @Shadow public abstract void setValue(int value);
     // @formatter:on
 
     private transient Player arclight$lastPlayer;
@@ -53,30 +52,28 @@ public abstract class ExperienceOrbMixin extends EntityMixin {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.PICKUP);
     }
 
-    @Inject(method = "tick", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/world/entity/Entity;tick()V"))
+    // 26.1: player targeting moved from tick into followNearbyPlayer.
+    @Inject(method = "followNearbyPlayer", at = @At("HEAD"))
     private void arclight$captureLast(CallbackInfo ci) {
         arclight$lastPlayer = this.followingPlayer;
     }
 
-    @Inject(method = "tick", at = @At("RETURN"))
-    private void arclight$captureReset(CallbackInfo ci) {
-        arclight$lastPlayer = null;
-    }
-
-    @Redirect(method = "tick", at = @At(value = "FIELD", ordinal = 4, target = "Lnet/minecraft/world/entity/ExperienceOrb;followingPlayer:Lnet/minecraft/world/entity/player/Player;"))
-    private Player arclight$targetPlayer(ExperienceOrb entity) {
-        if (this.followingPlayer != arclight$lastPlayer) {
-            EntityTargetLivingEntityEvent event = CraftEventFactory.callEntityTargetLivingEvent((ExperienceOrb) (Object) this, this.followingPlayer, (this.followingPlayer != null) ? EntityTargetEvent.TargetReason.CLOSEST_PLAYER : EntityTargetEvent.TargetReason.FORGOT_TARGET);
-            LivingEntity target = (event.getTarget() == null) ? null : ((CraftLivingEntity) event.getTarget()).getHandle();
-
-            if (event.isCancelled()) {
-                this.followingPlayer = arclight$lastPlayer;
-                return null;
-            } else {
-                this.followingPlayer = (target instanceof Player) ? (Player) target : null;
-            }
+    @Inject(method = "followNearbyPlayer", at = @At("RETURN"))
+    private void arclight$targetPlayer(CallbackInfo ci) {
+        if (this.followingPlayer == arclight$lastPlayer) {
+            return;
         }
-        return this.followingPlayer;
+        EntityTargetLivingEntityEvent event = CraftEventFactory.callEntityTargetLivingEvent(
+            (ExperienceOrb) (Object) this,
+            this.followingPlayer,
+            (this.followingPlayer != null) ? EntityTargetEvent.TargetReason.CLOSEST_PLAYER : EntityTargetEvent.TargetReason.FORGOT_TARGET
+        );
+        if (event.isCancelled()) {
+            this.followingPlayer = arclight$lastPlayer;
+            return;
+        }
+        LivingEntity target = (event.getTarget() == null) ? null : ((CraftLivingEntity) event.getTarget()).getHandle();
+        this.followingPlayer = (target instanceof Player) ? (Player) target : null;
     }
 
     @Decorate(method = "playerTouch", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;giveExperiencePoints(I)V"))
@@ -103,7 +100,7 @@ public abstract class ExperienceOrbMixin extends EntityMixin {
 
     @Decorate(method = "repairPlayerItems", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ExperienceOrb;repairPlayerItems(Lnet/minecraft/server/level/ServerPlayer;I)I"))
     private int arclight$updateXp(ExperienceOrb instance, ServerPlayer serverPlayer, int i) throws Throwable {
-        this.value = i;
+        this.setValue(i);
         return (int) DecorationOps.callsite().invoke(instance, serverPlayer, i);
     }
 

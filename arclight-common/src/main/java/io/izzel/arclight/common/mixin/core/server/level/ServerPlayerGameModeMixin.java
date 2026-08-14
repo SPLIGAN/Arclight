@@ -84,8 +84,8 @@ public abstract class ServerPlayerGameModeMixin implements ServerPlayerGameModeB
      * See PSI for firing when it's cancelled.
      */
     @Decorate(method = "handleBlockBreakAction", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;send(Lnet/minecraft/network/protocol/Packet;)V"),
-        slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;mayInteract(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;)Z")))
-    private void arclight$mayNotInteractEvent(ServerGamePacketListenerImpl instance, Packet<?> packet, BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction) throws Throwable {
+        slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;mayInteract(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/core/BlockPos;)Z")))
+    private void arclight$mayNotInteractEvent(ServerGamePacketListenerImpl instance, Packet<?> packet, BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int maxBuildHeight, int sequence) throws Throwable {
         CraftEventFactory.callPlayerInteractEvent(this.player, Action.LEFT_CLICK_BLOCK, blockPos, direction, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
         DecorationOps.callsite().invoke(instance, packet);
         BlockEntity blockEntity = this.level.getBlockEntity(blockPos);
@@ -95,8 +95,9 @@ public abstract class ServerPlayerGameModeMixin implements ServerPlayerGameModeB
         }
     }
 
-    @Decorate(method = "handleBlockBreakAction", inject = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayerGameMode;isCreative()Z"))
-    private void arclight$interactEvent(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction,
+    // 26.1: creative check is Abilities.instabuild (no ServerPlayerGameMode.isCreative call here).
+    @Decorate(method = "handleBlockBreakAction", inject = true, at = @At(value = "FIELD", target = "Lnet/minecraft/world/entity/player/Abilities;instabuild:Z"))
+    private void arclight$interactEvent(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int maxBuildHeight, int sequence,
                                         @Local(allocate = "playerInteractEvent") PlayerInteractEvent event) throws Throwable {
         event = CraftEventFactory.callPlayerInteractEvent(this.player, Action.LEFT_CLICK_BLOCK, blockPos, direction, this.player.getInventory().getSelectedItem(), InteractionHand.MAIN_HAND);
         if (event.isCancelled()) {
@@ -113,7 +114,7 @@ public abstract class ServerPlayerGameModeMixin implements ServerPlayerGameModeB
     }
 
     @Decorate(method = "handleBlockBreakAction", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/world/level/block/state/BlockState;isAir()Z"))
-    private boolean arclight$playerInteractCancelled(BlockState instance, BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction,
+    private boolean arclight$playerInteractCancelled(BlockState instance, BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int maxBuildHeight, int sequence,
                                                      @Local(allocate = "playerInteractEvent") PlayerInteractEvent event) throws Throwable {
         boolean result = false;
         if (event.useInteractedBlock() == org.bukkit.event.Event.Result.DENY) {
@@ -133,7 +134,7 @@ public abstract class ServerPlayerGameModeMixin implements ServerPlayerGameModeB
     }
 
     @Decorate(method = "handleBlockBreakAction", inject = true, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/world/level/block/state/BlockState;isAir()Z"))
-    private void arclight$blockDamageEvent(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction,
+    private void arclight$blockDamageEvent(BlockPos blockPos, ServerboundPlayerActionPacket.Action action, Direction direction, int maxBuildHeight, int sequence,
                                            @Local(ordinal = -1) float f,
                                            @Local(allocate = "playerInteractEvent") PlayerInteractEvent event) throws Throwable {
         if (event.useItemInHand() == Event.Result.DENY) {
@@ -256,9 +257,9 @@ public abstract class ServerPlayerGameModeMixin implements ServerPlayerGameModeB
         }
     }
 
-    @Decorate(method = "useItemOn", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/ItemCooldowns;isOnCooldown(Lnet/minecraft/world/item/Item;)Z"))
-    private boolean arclight$useInteractResult(ItemCooldowns instance, Item item) throws Throwable {
-        var result = (boolean) DecorationOps.callsite().invoke(instance, item);
+    @Decorate(method = "useItemOn", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/item/ItemCooldowns;isOnCooldown(Lnet/minecraft/world/item/ItemStack;)Z"))
+    private boolean arclight$useInteractResult(ItemCooldowns instance, ItemStack stack) throws Throwable {
+        var result = (boolean) DecorationOps.callsite().invoke(instance, stack);
         DecorationOps.blackhole().invoke(result);
         return interactResult;
     }

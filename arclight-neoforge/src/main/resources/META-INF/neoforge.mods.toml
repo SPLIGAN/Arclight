@@ -12,3 +12,19 @@ authors="IzzelAliz"
 description='''
     Arclight bukkit layer for NeoForge
     '''
+
+# FML 11 / NeoForge 26.1: declare mixin configs here.
+# Manifest MixinConnector on the extracted mod_file is not reliably discovered.
+[[mixins]]
+config="mixins.arclight.core.json"
+[[mixins]]
+config="mixins.arclight.bukkit.json"
+[[mixins]]
+config="mixins.arclight.neoforge.json"
+[[mixins]]
+config="mixins.arclight.impl.optimization.json"
+[[mixins]]
+config="mixins.arclight.nms.json"
+
+[[accessTransformers]]
+file="META-INF/accesstransformer.cfg"

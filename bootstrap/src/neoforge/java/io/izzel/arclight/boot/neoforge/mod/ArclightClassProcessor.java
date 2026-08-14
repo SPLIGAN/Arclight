@@ -46,10 +46,18 @@ public class ArclightClassProcessor implements ClassProcessor {
     @Override
     public void link(LinkContext context) {
         ModBootstrap.postRun();
+        try {
+            io.izzel.arclight.mixin.MixinTools.setup();
+            LOGGER.info("Arclight MixinTools ready (NeoForge ClassProcessor)");
+        } catch (Throwable t) {
+            LOGGER.error("Failed to setup MixinTools", t);
+            throw new RuntimeException(t);
+        }
         this.implementers.put("inventory", new InventoryImplementer());
         this.implementers.put("switch", SwitchTableFixer.INSTANCE);
         this.implementers.put("async", AsyncCatcher.INSTANCE);
         this.implementers.put("enum", new EnumDefinalizer());
+        this.implementers.put("leveldata", new ServerLevelDataFieldFixer());
         if (this.logger) {
             this.implementers.put("logger", new LoggerTransformer());
         }

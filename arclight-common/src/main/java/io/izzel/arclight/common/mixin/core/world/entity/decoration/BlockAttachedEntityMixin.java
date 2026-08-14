@@ -5,13 +5,13 @@ import io.izzel.arclight.common.mixin.core.world.entity.EntityMixin;
 import io.izzel.arclight.common.mod.mixins.annotation.TransformAccess;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.nbt.CompoundTag;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.tags.DamageTypeTags;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.MoverType;
 import net.minecraft.world.entity.decoration.BlockAttachedEntity;
-import net.minecraft.world.phys.AABB;
+import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Hanging;
@@ -34,8 +34,9 @@ public abstract class BlockAttachedEntityMixin extends EntityMixin {
     @Shadow public abstract BlockPos getPos();
     // @formatter:on
 
+    // 26.1: addAdditionalSaveData takes ValueOutput instead of CompoundTag.
     @Inject(method = "addAdditionalSaveData", cancellable = true, at = @At("HEAD"))
-    private void arclight$skipSave(CompoundTag p_31736_, CallbackInfo ci) {
+    private void arclight$skipSave(ValueOutput output, CallbackInfo ci) {
         if (this.arclight$saveNotIncludeAll) {
             ci.cancel();
         }
@@ -59,8 +60,9 @@ public abstract class BlockAttachedEntityMixin extends EntityMixin {
         }
     }
 
-    @Inject(method = "hurt", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/decoration/BlockAttachedEntity;kill()V"))
-    private void arclight$hangingBreakByAttack(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+    // 26.1: kill(ServerLevel) replaces no-arg kill().
+    @Inject(method = "hurtServer", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/decoration/BlockAttachedEntity;kill(Lnet/minecraft/server/level/ServerLevel;)V"))
+    private void arclight$hangingBreakByAttack(ServerLevel level, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         Entity damager = (source.isDirect()) ? source.getDirectEntity() : source.getEntity();
         HangingBreakEvent event;
         if (damager != null) {
@@ -74,7 +76,7 @@ public abstract class BlockAttachedEntityMixin extends EntityMixin {
         }
     }
 
-    @Inject(method = "move", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/decoration/BlockAttachedEntity;kill()V"))
+    @Inject(method = "move", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/decoration/BlockAttachedEntity;kill(Lnet/minecraft/server/level/ServerLevel;)V"))
     private void arclight$hangingBreakByMove(MoverType typeIn, Vec3 pos, CallbackInfo ci) {
         if (this.isRemoved()) {
             ci.cancel();

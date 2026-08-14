@@ -4,25 +4,17 @@ import io.izzel.arclight.common.bridge.core.world.level.portal.TeleportTransitio
 import io.izzel.arclight.common.mod.mixins.annotation.CreateConstructor;
 import io.izzel.arclight.common.mod.mixins.annotation.ShadowConstructor;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.Relative;
 import net.minecraft.world.level.portal.TeleportTransition;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 
+import java.util.Set;
+
 @Mixin(TeleportTransition.class)
 public class TeleportTransitionMixin implements TeleportTransitionBridge {
-
-    @ShadowConstructor
-    public void arclight$constructor(ServerLevel newLevel, Vec3 pos, Vec3 speed, float yRot, float xRot, boolean missingRespawnBlock, TeleportTransition.PostTeleportTransition postTeleportTransition) {
-        throw new RuntimeException();
-    }
-
-    @CreateConstructor
-    public void arclight$constructor(ServerLevel newLevel, Vec3 pos, Vec3 speed, float yRot, float xRot, boolean missingRespawnBlock, TeleportTransition.PostTeleportTransition postTeleportTransition, PlayerTeleportEvent.TeleportCause cause) {
-        arclight$constructor(newLevel, pos, speed, yRot, xRot, missingRespawnBlock, postTeleportTransition);
-        this.arclight$cause = cause;
-    }
 
     @ShadowConstructor
     public void arclight$constructor(ServerLevel serverLevel, Vec3 vec3, Vec3 vec32, float f, float g, TeleportTransition.PostTeleportTransition postTeleportTransition) {
@@ -32,6 +24,28 @@ public class TeleportTransitionMixin implements TeleportTransitionBridge {
     @CreateConstructor
     public void arclight$constructor(ServerLevel serverLevel, Vec3 vec3, Vec3 vec32, float f, float g, TeleportTransition.PostTeleportTransition postTeleportTransition, PlayerTeleportEvent.TeleportCause cause) {
         arclight$constructor(serverLevel, vec3, vec32, f, g, postTeleportTransition);
+        this.arclight$cause = cause;
+    }
+
+    @ShadowConstructor
+    public void arclight$constructor(ServerLevel serverLevel, Vec3 vec3, Vec3 vec32, float f, float g, Set<Relative> relatives, TeleportTransition.PostTeleportTransition postTeleportTransition) {
+        throw new RuntimeException();
+    }
+
+    @CreateConstructor
+    public void arclight$constructor(ServerLevel serverLevel, Vec3 vec3, Vec3 vec32, float f, float g, Set<Relative> relatives, TeleportTransition.PostTeleportTransition postTeleportTransition, PlayerTeleportEvent.TeleportCause cause) {
+        arclight$constructor(serverLevel, vec3, vec32, f, g, relatives, postTeleportTransition);
+        this.arclight$cause = cause;
+    }
+
+    @ShadowConstructor
+    public void arclight$constructor(ServerLevel newLevel, Vec3 position, Vec3 deltaMovement, float yRot, float xRot, boolean missingRespawnBlock, boolean asPassenger, Set<Relative> relatives, TeleportTransition.PostTeleportTransition postTeleportTransition) {
+        throw new RuntimeException();
+    }
+
+    @CreateConstructor
+    public void arclight$constructor(ServerLevel newLevel, Vec3 position, Vec3 deltaMovement, float yRot, float xRot, boolean missingRespawnBlock, boolean asPassenger, Set<Relative> relatives, TeleportTransition.PostTeleportTransition postTeleportTransition, PlayerTeleportEvent.TeleportCause cause) {
+        arclight$constructor(newLevel, position, deltaMovement, yRot, xRot, missingRespawnBlock, asPassenger, relatives, postTeleportTransition);
         this.arclight$cause = cause;
     }
 

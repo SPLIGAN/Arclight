@@ -2,8 +2,8 @@ package io.izzel.arclight.common.mixin.core.world.entity.monster;
 
 import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.MobBridge;
-import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityReference;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.monster.zombie.ZombifiedPiglin;
 import net.minecraft.world.phys.AABB;
@@ -17,14 +17,13 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 
-import java.util.UUID;
-
 @Mixin(ZombifiedPiglin.class)
 public abstract class ZombifiedPiglinMixin extends ZombieMixin {
 
     // @formatter:off
-    @Shadow public abstract UUID getPersistentAngerTarget();
-    @Shadow public abstract int getRemainingPersistentAngerTime();
+    // 26.1: anger target is EntityReference; duration is set via setTimeToRemainAngry(J).
+    @Shadow public abstract EntityReference<LivingEntity> getPersistentAngerTarget();
+    @Shadow public abstract long getPersistentAngerEndTime();
     // @formatter:on
 
     /**
@@ -47,13 +46,17 @@ public abstract class ZombifiedPiglinMixin extends ZombieMixin {
         }
     }
 
-    @ModifyArg(method = "startPersistentAngerTimer", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/monster/ZombifiedPiglin;setRemainingPersistentAngerTime(I)V"))
-    private int arclight$pigAngry(int time) {
-        Entity entity = ((ServerLevel) this.level()).getEntity(this.getPersistentAngerTarget());
-        PigZombieAngerEvent event = new PigZombieAngerEvent((PigZombie) this.getBukkitEntity(), entity == null ? null : ((EntityBridge) entity).bridge$getBukkitEntity(), time);
+    @ModifyArg(method = "startPersistentAngerTimer", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/monster/zombie/ZombifiedPiglin;setTimeToRemainAngry(J)V"))
+    private long arclight$pigAngry(long time) {
+        LivingEntity living = EntityReference.getLivingEntity(this.getPersistentAngerTarget(), this.level());
+        PigZombieAngerEvent event = new PigZombieAngerEvent((PigZombie) this.getBukkitEntity(), living == null ? null : ((EntityBridge) living).bridge$getBukkitEntity(), (int) Math.min(Integer.MAX_VALUE, time));
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) {
-            return this.getRemainingPersistentAngerTime();
+            long end = this.getPersistentAngerEndTime();
+            if (end < 0L) {
+                return 0L;
+            }
+            return Math.max(0L, end - this.level().getGameTime());
         }
         return event.getNewAnger();
     }

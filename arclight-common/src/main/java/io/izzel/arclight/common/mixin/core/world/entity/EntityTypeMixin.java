@@ -7,7 +7,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EntitySpawnReason;
-import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.spongepowered.asm.mixin.Mixin;
@@ -28,9 +28,10 @@ public abstract class EntityTypeMixin<T extends Entity> implements EntityTypeBri
     @Shadow @Nullable public abstract T create(ServerLevel p_262637_, @org.jetbrains.annotations.Nullable Consumer<T> p_262629_, BlockPos p_262595_, EntitySpawnReason p_262666_, boolean p_262685_, boolean p_262588_);
     // @formatter:on
 
-    @Inject(method = "spawn(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/EntitySpawnReason;ZZ)Lnet/minecraft/world/entity/Entity;",
+    // 26.1: spawn egg overload takes LivingEntity instead of Player.
+    @Inject(method = "spawn(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/entity/EntitySpawnReason;ZZ)Lnet/minecraft/world/entity/Entity;",
         at = @At(value = "HEAD"))
-    private void arclight$spawnReason(ServerLevel worldIn, ItemStack p_20594_, Player p_20595_, BlockPos p_20596_, EntitySpawnReason p_20597_, boolean p_20598_, boolean p_20599_, CallbackInfoReturnable<T> cir) {
+    private void arclight$spawnReason(ServerLevel worldIn, ItemStack p_20594_, LivingEntity p_20595_, BlockPos p_20596_, EntitySpawnReason p_20597_, boolean p_20598_, boolean p_20599_, CallbackInfoReturnable<T> cir) {
         CreatureSpawnEvent.SpawnReason spawnReason = ((IWorldWriterBridge) worldIn).bridge$getAddEntityReason();
         if (spawnReason == null) {
             ((IWorldWriterBridge) worldIn).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.SPAWNER_EGG);

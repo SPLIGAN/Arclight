@@ -118,36 +118,40 @@ jar {
     }
 }
 
-tasks.register('forgeJar', Jar) {
-    archiveBaseName.set "arclight-forge-${libs.versions.minecraft.get()}"
-    manifest.attributes 'Main-Class': 'io.izzel.arclight.server.Launcher'
-    manifest.attributes 'Implementation-Title': 'Arclight'
-    manifest.attributes 'Implementation-Version': "arclight-${libs.versions.minecraft.get()}-${project.version}-$gitHash"
-    manifest.attributes 'Implementation-Vendor': 'Arclight Team'
-    manifest.attributes 'Implementation-Timestamp': new Date().format("yyyy-MM-dd HH:mm:ss")
-    manifest.attributes 'Automatic-Module-Name': 'arclight.boot'
-    from(configurations.embed.collect { it.isDirectory() ? it : zipTree(it) }) {
-        exclude 'META-INF/MANIFEST.MF'
-        exclude 'META-INF/*.SF'
-        exclude 'META-INF/*.DSA'
-        exclude 'META-INF/*.RSA'
-        exclude 'LICENSE.txt'
-        exclude 'META-INF/services/**'
-        exclude 'org/apache/commons/lang/enum/**'
+def enableForge = gradle.startParameter.projectProperties.getOrDefault('enableForge', 'false') == 'true'
+
+if (enableForge) {
+    tasks.register('forgeJar', Jar) {
+        archiveBaseName.set "arclight-forge-${libs.versions.minecraft.get()}"
+        manifest.attributes 'Main-Class': 'io.izzel.arclight.server.Launcher'
+        manifest.attributes 'Implementation-Title': 'Arclight'
+        manifest.attributes 'Implementation-Version': "arclight-${libs.versions.minecraft.get()}-${project.version}-$gitHash"
+        manifest.attributes 'Implementation-Vendor': 'Arclight Team'
+        manifest.attributes 'Implementation-Timestamp': new Date().format("yyyy-MM-dd HH:mm:ss")
+        manifest.attributes 'Automatic-Module-Name': 'arclight.boot'
+        from(configurations.embed.collect { it.isDirectory() ? it : zipTree(it) }) {
+            exclude 'META-INF/MANIFEST.MF'
+            exclude 'META-INF/*.SF'
+            exclude 'META-INF/*.DSA'
+            exclude 'META-INF/*.RSA'
+            exclude 'LICENSE.txt'
+            exclude 'META-INF/services/**'
+            exclude 'org/apache/commons/lang/enum/**'
+        }
+        into('/') {
+            it.from(project(':arclight-forge').tasks.relocateCraftBukkit.outputs.files.collect())
+            it.rename { name -> 'common.jar' }
+        }
+        into('/') {
+            it.from(configurations.gson.collect())
+            it.rename { name -> 'gson.jar' }
+        }
+        from sourceSets.applaunch.output
+        from sourceSets.main.output
+        from sourceSets.forge.output
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        dependsOn(project(':arclight-forge').tasks.build)
     }
-    into('/') {
-        it.from(project(':arclight-forge').tasks.relocateCraftBukkit.outputs.files.collect())
-        it.rename { name -> 'common.jar' }
-    }
-    into('/') {
-        it.from(configurations.gson.collect())
-        it.rename { name -> 'gson.jar' }
-    }
-    from sourceSets.applaunch.output
-    from sourceSets.main.output
-    from sourceSets.forge.output
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    dependsOn(project(':arclight-forge').tasks.build)
 }
 
 tasks.register('neoforgeJar', Jar) {
@@ -246,24 +250,26 @@ compileApplaunchJava {
     sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
 }
 
-tasks.register('runProdForge', JavaExec) {
-    classpath = files(tasks.forgeJar)
-    // systemProperties 'bsl.debug': 'true'
-    systemProperties 'terminal.ansi': 'true'
-    systemProperties 'mixin.debug.export': 'true'
-    systemProperties 'mixin.dumpTargetOnFailure': 'true'
-    systemProperties 'arclight.alwaysExtract': 'true'
-    systemProperties 'arclight.remapper.dump': './.mixin.out/plugin_classes'
-    systemProperties 'sun.stdout.encoding': 'UTF-8'
-    systemProperties 'sun.stderr.encoding': 'UTF-8'
-    workingDir System.env.ARCLIGHT_PROD_DIR ?: file('run_prod/forge')
-    maxHeapSize '4G'
-    args 'nogui'
-    standardInput System.in
-    javaLauncher.convention(javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
-    })
-    dependsOn project.tasks.forgeJar
+if (enableForge) {
+    tasks.register('runProdForge', JavaExec) {
+        classpath = files(tasks.named('forgeJar'))
+        // systemProperties 'bsl.debug': 'true'
+        systemProperties 'terminal.ansi': 'true'
+        systemProperties 'mixin.debug.export': 'true'
+        systemProperties 'mixin.dumpTargetOnFailure': 'true'
+        systemProperties 'arclight.alwaysExtract': 'true'
+        systemProperties 'arclight.remapper.dump': './.mixin.out/plugin_classes'
+        systemProperties 'sun.stdout.encoding': 'UTF-8'
+        systemProperties 'sun.stderr.encoding': 'UTF-8'
+        workingDir System.env.ARCLIGHT_PROD_DIR ?: file('run_prod/forge')
+        maxHeapSize '4G'
+        args 'nogui'
+        standardInput System.in
+        javaLauncher.convention(javaToolchains.launcherFor {
+            languageVersion = JavaLanguageVersion.of(25)
+        })
+        dependsOn tasks.named('forgeJar')
+    }
 }
 
 tasks.register('runProdNeoforge', JavaExec) {

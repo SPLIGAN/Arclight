@@ -3,7 +3,7 @@ package io.izzel.arclight.common.mixin.core.world.entity.vehicle;
 import io.izzel.arclight.common.bridge.core.world.IInventoryBridge;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.Container;
-import net.minecraft.world.entity.vehicle.boat.ChestBoat;
+import net.minecraft.world.entity.vehicle.boat.AbstractChestBoat;
 import net.minecraft.world.item.ItemStack;
 import org.bukkit.Location;
 import org.bukkit.craftbukkit.entity.CraftHumanEntity;
@@ -15,8 +15,9 @@ import org.spongepowered.asm.mixin.Shadow;
 import java.util.ArrayList;
 import java.util.List;
 
-@Mixin(ChestBoat.class)
-public abstract class ChestBoatMixin extends BoatMixin implements IInventoryBridge, Container {
+// 26.1.2: ChestBoat extends AbstractChestBoat (not Boat); inventory lives here.
+@Mixin(AbstractChestBoat.class)
+public abstract class AbstractChestBoatMixin extends AbstractBoatMixin implements IInventoryBridge, Container {
 
     @Shadow private NonNullList<ItemStack> itemStacks;
 

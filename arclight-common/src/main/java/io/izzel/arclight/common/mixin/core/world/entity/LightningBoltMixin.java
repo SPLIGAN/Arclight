@@ -2,9 +2,9 @@ package io.izzel.arclight.common.mixin.core.world.entity;
 
 import io.izzel.arclight.common.mod.util.ArclightCaptures;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LightningBolt;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 import org.bukkit.craftbukkit.event.CraftEventFactory;
 import org.bukkit.event.entity.EntityRemoveEvent;
@@ -43,8 +43,9 @@ public abstract class LightningBoltMixin extends EntityMixin {
         ArclightCaptures.captureDamageEventEntity(null);
     }
 
-    @Redirect(method = "spawnFire", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlockAndUpdate(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z"))
-    private boolean arclight$blockIgnite(Level world, BlockPos pos, BlockState state) {
+    // 26.1: lightning fire placement goes through ServerLevel.setBlockAndUpdate.
+    @Redirect(method = "spawnFire", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;setBlockAndUpdate(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z"))
+    private boolean arclight$blockIgnite(ServerLevel world, BlockPos pos, BlockState state) {
         if (!CraftEventFactory.callBlockIgniteEvent(world, pos, (LightningBolt) (Object) this).isCancelled()) {
             return world.setBlockAndUpdate(pos, state);
         } else {

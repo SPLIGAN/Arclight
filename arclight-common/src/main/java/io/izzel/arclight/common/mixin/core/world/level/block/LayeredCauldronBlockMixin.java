@@ -1,9 +1,14 @@
 package io.izzel.arclight.common.mixin.core.world.level.block;
 
 import io.izzel.arclight.common.mod.server.block.CauldronHooks;
+import io.izzel.arclight.mixin.Decorate;
+import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Eject;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
+import net.minecraft.world.entity.InsideBlockEffectType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LayeredCauldronBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -17,21 +22,22 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(LayeredCauldronBlock.class)
 public class LayeredCauldronBlockMixin {
 
-    @Redirect(method = "entityInside", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;clearFire()V"))
-    private void arclight$extinguish1(Entity entity) {
-    }
-
-    @Inject(method = "entityInside", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/LayeredCauldronBlock;handleEntityOnFireInside(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"))
-    private void arclight$extinguish2(BlockState p_153534_, Level p_153535_, BlockPos p_153536_, Entity entity, CallbackInfo ci) {
+    // 26.1: extinguish/lower-fill moved into lambda$entityInside$0 via InsideBlockEffectApplier.
+    @Inject(method = "lambda$entityInside$0", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/LayeredCauldronBlock;handleEntityOnFireInside(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"))
+    private void arclight$extinguishReason(ServerLevel serverLevel, BlockPos pos, BlockState state, Level level, Entity entity, CallbackInfo ci) {
         CauldronHooks.setChangeReason(entity, CauldronLevelChangeEvent.ChangeReason.EXTINGUISH);
     }
 
-    @Inject(method = "entityInside", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/world/level/block/LayeredCauldronBlock;handleEntityOnFireInside(Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)V"))
-    private void arclight$extinguish3(BlockState p_153534_, Level p_153535_, BlockPos p_153536_, Entity p_153537_, CallbackInfo ci) {
-        if (!CauldronHooks.getResult()) {
-            ci.cancel();
+    @Decorate(method = "entityInside", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/InsideBlockEffectApplier;apply(Lnet/minecraft/world/entity/InsideBlockEffectType;)V"))
+    private void arclight$extinguishApply(InsideBlockEffectApplier applier, InsideBlockEffectType type) throws Throwable {
+        try {
+            if (type == InsideBlockEffectType.EXTINGUISH && !CauldronHooks.getResult()) {
+                return;
+            }
+            DecorationOps.callsite().invoke(applier, type);
+        } finally {
+            CauldronHooks.reset();
         }
-        CauldronHooks.reset();
     }
 
     @Redirect(method = "lowerFillLevel", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlockAndUpdate(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Z"))

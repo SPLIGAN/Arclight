@@ -1,6 +1,7 @@
 package io.izzel.arclight.common.mixin.core.world.level.block.entity;
 
 import io.izzel.arclight.mixin.Decorate;
+import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponentGetter;
 import net.minecraft.core.component.DataComponents;
@@ -25,22 +26,27 @@ public abstract class BannerBlockEntityMixin extends BlockEntity {
         super(blockEntityType, blockPos, blockState);
     }
 
-    @Decorate(method = {"method_58121", "lambda$loadAdditional$1"}, inject = true, at = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/BannerBlockEntity;patterns:Lnet/minecraft/world/level/block/entity/BannerPatternLayers;", opcode = Opcodes.PUTFIELD), require = 1)
-    private void arclight$setPatterns(BannerPatternLayers layers) {
-        this.setPatterns(layers);
+    // 26.1: patterns assigned inline in loadAdditional; cap layer count like CraftBukkit.
+    @Decorate(method = "loadAdditional", at = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/BannerBlockEntity;patterns:Lnet/minecraft/world/level/block/entity/BannerPatternLayers;", opcode = Opcodes.PUTFIELD))
+    private void arclight$setPatterns(BannerBlockEntity self, BannerPatternLayers layers) throws Throwable {
+        DecorationOps.callsite().invoke(self, this.arclight$limitPatterns(layers));
     }
 
-    @Decorate(method = "applyImplicitComponents", inject = true, at = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/BannerBlockEntity;patterns:Lnet/minecraft/world/level/block/entity/BannerPatternLayers;", opcode = Opcodes.PUTFIELD))
-    private void arclight$applyLimits(DataComponentGetter dataComponentGetter) {
-        this.setPatterns((BannerPatternLayers) dataComponentGetter.getOrDefault(DataComponents.BANNER_PATTERNS, BannerPatternLayers.EMPTY)); // CraftBukkit - apply limits
+    @Decorate(method = "applyImplicitComponents", at = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/BannerBlockEntity;patterns:Lnet/minecraft/world/level/block/entity/BannerPatternLayers;", opcode = Opcodes.PUTFIELD))
+    private void arclight$applyLimits(BannerBlockEntity self, BannerPatternLayers layers, DataComponentGetter dataComponentGetter) throws Throwable {
+        DecorationOps.callsite().invoke(self, this.arclight$limitPatterns(layers));
     }
 
     // CraftBukkit start
     public void setPatterns(BannerPatternLayers bannerpatternlayers) {
+        this.patterns = this.arclight$limitPatterns(bannerpatternlayers);
+    }
+
+    private BannerPatternLayers arclight$limitPatterns(BannerPatternLayers bannerpatternlayers) {
         if (bannerpatternlayers.layers().size() > 20) {
-            bannerpatternlayers = new BannerPatternLayers(List.copyOf(bannerpatternlayers.layers().subList(0, 20)));
+            return new BannerPatternLayers(List.copyOf(bannerpatternlayers.layers().subList(0, 20)));
         }
-        this.patterns = bannerpatternlayers;
+        return bannerpatternlayers;
     }
     // CraftBukkit end
 }

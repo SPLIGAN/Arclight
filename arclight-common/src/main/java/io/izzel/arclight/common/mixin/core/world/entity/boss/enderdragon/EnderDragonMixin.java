@@ -82,10 +82,10 @@ public abstract class EnderDragonMixin extends MobMixin {
 
     /**
      * @author IzzelAliz
-     * @reason
+     * @reason Bukkit EntityExplodeEvent for dragon block destruction.
      */
     @Overwrite
-    private boolean checkWalls(final AABB axisalignedbb) {
+    private boolean checkWalls(final ServerLevel level, final AABB axisalignedbb) {
         final int i = Mth.floor(axisalignedbb.minX);
         final int j = Mth.floor(axisalignedbb.minY);
         final int k = Mth.floor(axisalignedbb.minZ);
@@ -99,11 +99,11 @@ public abstract class EnderDragonMixin extends MobMixin {
             for (int l2 = j; l2 <= i2; ++l2) {
                 for (int i3 = k; i3 <= j2; ++i3) {
                     final BlockPos blockposition = new BlockPos(k2, l2, i3);
-                    final BlockState iblockdata = this.level().getBlockState(blockposition);
+                    final BlockState iblockdata = level.getBlockState(blockposition);
                     if (!iblockdata.isAir() && !iblockdata.is(BlockTags.DRAGON_TRANSPARENT)) {
-                        if (this.bridge$forge$canEntityDestroy(this.level(), blockposition, (EnderDragon) (Object) this) && !iblockdata.is(BlockTags.DRAGON_IMMUNE)) {
+                        if (this.bridge$forge$canEntityDestroy(level, blockposition, (EnderDragon) (Object) this) && !iblockdata.is(BlockTags.DRAGON_IMMUNE)) {
                             flag2 = true;
-                            destroyedBlocks.add(CraftBlock.at(this.level(), blockposition));
+                            destroyedBlocks.add(CraftBlock.at(level, blockposition));
                         } else {
                             flag = true;
                         }
@@ -121,7 +121,7 @@ public abstract class EnderDragonMixin extends MobMixin {
         }
         if (event.getYield() == 0.0f) {
             for (final org.bukkit.block.Block block2 : event.blockList()) {
-                this.level().removeBlock(new BlockPos(block2.getX(), block2.getY(), block2.getZ()), false);
+                level.removeBlock(new BlockPos(block2.getX(), block2.getY(), block2.getZ()), false);
             }
         } else {
             for (final org.bukkit.block.Block block2 : event.blockList()) {
@@ -133,21 +133,20 @@ public abstract class EnderDragonMixin extends MobMixin {
                 final BlockPos blockposition2 = craftBlock.getPosition();
                 final net.minecraft.world.level.block.Block nmsBlock = craftBlock.getNMS().getBlock();
                 if (nmsBlock.dropFromExplosion(explosion)) {
-                    BlockEntity tileentity = craftBlock.getNMS().hasBlockEntity() ? this.level().getBlockEntity(blockposition2) : null;
-                    LootParams.Builder loottableinfo_builder = new LootParams.Builder((ServerLevel) this.level()).withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(blockposition2)).withParameter(LootContextParams.TOOL, ItemStack.EMPTY).withParameter(LootContextParams.EXPLOSION_RADIUS, 1.0f / event.getYield()).withOptionalParameter(LootContextParams.BLOCK_ENTITY, tileentity);
+                    BlockEntity tileentity = craftBlock.getNMS().hasBlockEntity() ? level.getBlockEntity(blockposition2) : null;
+                    LootParams.Builder loottableinfo_builder = new LootParams.Builder(level).withParameter(LootContextParams.ORIGIN, Vec3.atCenterOf(blockposition2)).withParameter(LootContextParams.TOOL, ItemStack.EMPTY).withParameter(LootContextParams.EXPLOSION_RADIUS, 1.0f / event.getYield()).withOptionalParameter(LootContextParams.BLOCK_ENTITY, tileentity);
                     for (ItemStack stack : craftBlock.getNMS().getDrops(loottableinfo_builder)) {
-                        Block.popResource(this.level(), blockposition2, stack);
+                        Block.popResource(level, blockposition2, stack);
                     }
-                    craftBlock.getNMS().spawnAfterBreak((ServerLevel) this.level(), blockposition2, ItemStack.EMPTY, false);
-                    // net.minecraft.block.Block.spawnDrops(craftBlock.getNMS(), loottableinfo_builder);
+                    craftBlock.getNMS().spawnAfterBreak(level, blockposition2, ItemStack.EMPTY, false);
                 }
-                nmsBlock.wasExploded((ServerLevel) this.level(), blockposition2, explosion);
-                this.level().removeBlock(blockposition2, false);
+                nmsBlock.wasExploded(level, blockposition2, explosion);
+                level.removeBlock(blockposition2, false);
             }
         }
         if (flag2) {
             final BlockPos blockposition3 = new BlockPos(i + this.random.nextInt(l - i + 1), j + this.random.nextInt(i2 - j + 1), k + this.random.nextInt(j2 - k + 1));
-            this.level().levelEvent(2008, blockposition3, 0);
+            level.levelEvent(2008, blockposition3, 0);
         }
         return flag;
     }

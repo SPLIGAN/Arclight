@@ -19,8 +19,9 @@ import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 @Mixin(AbstractSkeleton.class)
 public abstract class AbstractSkeletonMixin extends PathfinderMobMixin {
 
+    // 26.1: AbstractSkeleton moved under monster.skeleton.
     @Inject(method = "performRangedAttack", cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD,
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/monster/AbstractSkeleton;playSound(Lnet/minecraft/sounds/SoundEvent;FF)V"))
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/monster/skeleton/AbstractSkeleton;playSound(Lnet/minecraft/sounds/SoundEvent;FF)V"))
     private void arclight$shootBow(LivingEntity target, float distanceFactor, CallbackInfo ci, ItemStack itemStack, ItemStack projectile, AbstractArrow arrowEntity) {
         EntityShootBowEvent event = CraftEventFactory.callEntityShootBowEvent((AbstractSkeleton) (Object) this, this.getMainHandItem(), null, arrowEntity, InteractionHand.MAIN_HAND, 0.8F, true);
         if (event.isCancelled()) {

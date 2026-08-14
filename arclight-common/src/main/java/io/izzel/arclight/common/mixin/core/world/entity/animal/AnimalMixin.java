@@ -46,8 +46,8 @@ public abstract class AnimalMixin extends AgeableMobMixin implements AnimalBridg
      * @reason
      */
     @Overwrite
-    protected void actuallyHurt(DamageSource arg, float f) {
-        super.actuallyHurt(arg, f);
+    protected void actuallyHurt(ServerLevel level, DamageSource arg, float f) {
+        super.actuallyHurt(level, arg, f);
         if (!arclight$damageResult) {
             return;
         }

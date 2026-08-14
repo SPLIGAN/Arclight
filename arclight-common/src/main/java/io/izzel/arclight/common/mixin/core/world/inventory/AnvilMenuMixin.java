@@ -53,7 +53,8 @@ public abstract class AnvilMenuMixin extends ItemCombinerMenuMixin implements An
         return arclight$zeroCostAllowed;
     }
 
-    @Decorate(method = "createResult", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/ResultContainer;setItem(ILnet/minecraft/world/item/ItemStack;)V"))
+    // 26.1: anvil result assembly moved into createResultInternal().
+    @Decorate(method = "createResultInternal", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/ResultContainer;setItem(ILnet/minecraft/world/item/ItemStack;)V"))
     private void arclight$prepareAnvilEvent(ResultContainer instance, int i, ItemStack itemStack) throws Throwable {
         arclight$zeroCostAllowed = false;
         final CraftAnvilView craft = getBukkitView();
@@ -82,17 +83,17 @@ public abstract class AnvilMenuMixin extends ItemCombinerMenuMixin implements An
         cir.setReturnValue(cir.getReturnValueZ() && hasItem);
     }
 
-    @Inject(method = "createResult", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/AnvilMenu;broadcastChanges()V"))
+    @Inject(method = "createResultInternal", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/AnvilMenu;broadcastChanges()V"))
     private void arclight$sync(CallbackInfo ci) {
         this.sendAllDataToRemote();
     }
 
-    @ModifyConstant(method = "createResult", constant = @Constant(intValue = 40), require = 0)
+    @ModifyConstant(method = "createResultInternal", constant = @Constant(intValue = 40), require = 0)
     private int arclight$maximumRepairCost(int i) {
         return i - 40 + maximumRepairCost;
     }
 
-    @ModifyConstant(method = "createResult", constant = @Constant(intValue = 39), require = 0)
+    @ModifyConstant(method = "createResultInternal", constant = @Constant(intValue = 39), require = 0)
     private int arclight$maximumRepairCost2(int i) {
         return i - 40 + maximumRepairCost;
     }

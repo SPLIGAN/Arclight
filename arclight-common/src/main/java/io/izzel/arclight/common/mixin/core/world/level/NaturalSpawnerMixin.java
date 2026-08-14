@@ -19,7 +19,6 @@ import net.minecraft.world.level.storage.LevelData;
 import org.bukkit.craftbukkit.util.CraftSpawnCategory;
 import org.bukkit.entity.SpawnCategory;
 import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,37 +27,39 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import java.util.List;
+
 @Mixin(NaturalSpawner.class)
 public abstract class NaturalSpawnerMixin {
 
     // @formatter:off
-    @Shadow @Final private static MobCategory[] SPAWNING_CATEGORIES;
     @Shadow public static void spawnCategoryForChunk(MobCategory p_234967_0_, ServerLevel p_234967_1_, LevelChunk p_234967_2_, NaturalSpawner.SpawnPredicate p_234967_3_, NaturalSpawner.AfterSpawnCallback p_234967_4_) { }
     // @formatter:on
 
     /**
      * @author IzzelAliz
-     * @reason
+     * @reason Bukkit per-world spawn limits and ticks-per-spawn
      */
     @Overwrite
-    public static void spawnForChunk(ServerLevel world, LevelChunk chunk, NaturalSpawner.SpawnState manager, boolean flag, boolean flag1, boolean flag2) {
-        MobCategory[] classifications = SPAWNING_CATEGORIES;
+    public static void spawnForChunk(ServerLevel world, LevelChunk chunk, NaturalSpawner.SpawnState manager, List<MobCategory> spawningCategories) {
+        // 26.1: categories are pre-filtered; still apply CraftBukkit tick rate / spawn limit here.
         LevelData worldInfo = world.getLevelData();
-        for (MobCategory classification : classifications) {
+        for (MobCategory classification : spawningCategories) {
             boolean spawnThisTick = true;
             int limit = classification.getMaxInstancesPerChunk();
             SpawnCategory spawnCategory = CraftSpawnCategory.toBukkit(classification);
             if (CraftSpawnCategory.isValidForLimits(spawnCategory)) {
-                spawnThisTick = ((WorldBridge) world).bridge$ticksPerSpawnCategory().getLong(spawnCategory) != 0 && worldInfo.getGameTime() % ((WorldBridge) world).bridge$ticksPerSpawnCategory().getLong(spawnCategory) == 0;
+                long ticksPer = ((WorldBridge) world).bridge$ticksPerSpawnCategory().getLong(spawnCategory);
+                spawnThisTick = ticksPer != 0L && worldInfo.getGameTime() % ticksPer == 0L;
                 limit = ((WorldBridge) world).bridge$getWorld().getSpawnLimit(spawnCategory);
             }
-            if (spawnThisTick) {
-                if (limit != 0) {
-                    if ((flag || !classification.isFriendly()) && (flag1 || classification.isFriendly()) && (flag2 || !classification.isPersistent())
-                        && ((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager).bridge$canSpawn(classification, chunk.getPos(), limit)) {
-                        spawnCategoryForChunk(classification, world, chunk, ((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager)::bridge$canSpawn, ((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager)::bridge$updateDensity);
-                    }
-                }
+            if (!spawnThisTick || limit == 0) {
+                continue;
+            }
+            if (((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager).bridge$canSpawn(classification, chunk.getPos(), limit)) {
+                spawnCategoryForChunk(classification, world, chunk,
+                    ((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager)::bridge$canSpawn,
+                    ((WorldEntitySpawnerBridge.EntityDensityManagerBridge) manager)::bridge$updateDensity);
             }
         }
     }

@@ -10,6 +10,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.level.BlockGetter;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
@@ -58,7 +59,7 @@ public abstract class EntityMixin_Vanilla implements InternalEntityBridge, Entit
         return drops;
     }
 
-    @Decorate(method = "updateFluidHeightAndDoFluidPushing", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/material/FluidState;getFlow(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/Vec3;"))
+    @Decorate(method = "updateFluidInteraction", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/material/FluidState;getFlow(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/Vec3;"))
     private Vec3 arclight$setLava(FluidState fluid, BlockGetter level, BlockPos pos) throws Throwable {
         if (fluid.getType().is(FluidTags.LAVA)) {
             bridge$setLastLavaContact(pos.immutable());
@@ -66,8 +67,8 @@ public abstract class EntityMixin_Vanilla implements InternalEntityBridge, Entit
         return (Vec3) DecorationOps.callsite().invoke(fluid, level, pos);
     }
 
-    @Decorate(method = "spawnAtLocation(Lnet/minecraft/world/item/ItemStack;F)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
-    private boolean arclight$captureEntityDrops(Level instance, Entity entity) throws Throwable {
+    @Decorate(method = "spawnAtLocation(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    private boolean arclight$captureEntityDrops(ServerLevel instance, Entity entity) throws Throwable {
         if (!bridge$isForceDrops() && arclight$captureDrop((ItemEntity) entity)) {
             return true;
         }

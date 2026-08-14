@@ -1,6 +1,7 @@
 package io.izzel.arclight.neoforge.mixin.core.world.entity.monster.piglin;
 
 import io.izzel.arclight.common.bridge.core.world.entity.monster.piglin.PiglinBridge;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 import net.minecraft.world.entity.monster.piglin.PiglinAi;
 import net.minecraft.world.item.ItemStack;
@@ -17,17 +18,17 @@ public abstract class PiglinAiMixin_NeoForge {
     // @formatter:on
 
     @Redirect(method = "stopHoldingOffHandItem", at = @At(value = "INVOKE", remap = false, target = "Lnet/minecraft/world/item/ItemStack;isPiglinCurrency()Z"))
-    private static boolean arclight$customBarter(ItemStack stack, Piglin piglin) {
+    private static boolean arclight$customBarter(ItemStack stack, ServerLevel level, Piglin piglin, boolean flag) {
         return isBarterCurrency(stack) || ((PiglinBridge) piglin).bridge$getAllowedBarterItems().contains(stack.getItem());
     }
 
     @Redirect(method = "wantsToPickup", at = @At(value = "INVOKE", remap = false, target = "Lnet/minecraft/world/item/ItemStack;isPiglinCurrency()Z"))
-    private static boolean arclight$customBanter2(ItemStack stack, Piglin piglin) {
+    private static boolean arclight$customBanter2(ItemStack stack, Piglin piglin, ItemStack wanted) {
         return isBarterCurrency(stack) || ((PiglinBridge) piglin).bridge$getAllowedBarterItems().contains(stack.getItem());
     }
 
     @Redirect(method = "canAdmire", at = @At(value = "INVOKE", remap = false, target = "Lnet/minecraft/world/item/ItemStack;isPiglinCurrency()Z"))
-    private static boolean arclight$customBanter3(ItemStack stack, Piglin piglin) {
+    private static boolean arclight$customBanter3(ItemStack stack, Piglin piglin, ItemStack offered) {
         return isBarterCurrency(stack) || ((PiglinBridge) piglin).bridge$getAllowedBarterItems().contains(stack.getItem());
     }
 }

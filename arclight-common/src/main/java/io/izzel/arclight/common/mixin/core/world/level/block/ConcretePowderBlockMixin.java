@@ -6,9 +6,11 @@ import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.util.RandomSource;
 import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.LevelAccessor;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.ScheduledTickAccess;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.ConcretePowderBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -57,18 +59,19 @@ public abstract class ConcretePowderBlockMixin extends FallingBlockMixin {
         return super.getStateForPlacement(context);
     }
 
+    // 26.1: updateShape(LevelReader, ScheduledTickAccess, ..., RandomSource)
     @Redirect(method = "updateShape", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/Block;defaultBlockState()Lnet/minecraft/world/level/block/state/BlockState;"))
-    public BlockState arclight$blockForm(Block instance, BlockState stateIn, Direction facing, BlockState facingState, LevelAccessor worldIn, BlockPos currentPos, BlockPos facingPos) {
-        if (!(worldIn instanceof Level)) {
+    public BlockState arclight$blockForm(Block instance, BlockState stateIn, LevelReader worldIn, ScheduledTickAccess ticks, BlockPos currentPos, Direction facing, BlockPos facingPos, BlockState facingState, RandomSource random) {
+        if (!(worldIn instanceof Level level)) {
             return this.concrete.defaultBlockState();
         }
-        CraftBlockState blockState = CraftBlockStates.getBlockState(worldIn, currentPos);
+        CraftBlockState blockState = CraftBlockStates.getBlockState(level, currentPos);
         blockState.setData(this.concrete.defaultBlockState());
         BlockFormEvent event = new BlockFormEvent(blockState.getBlock(), blockState);
         Bukkit.getPluginManager().callEvent(event);
         if (!event.isCancelled()) {
             return blockState.getHandle();
         }
-        return super.updateShape(stateIn, facing, facingState, worldIn, currentPos, facingPos);
+        return super.updateShape(stateIn, worldIn, ticks, currentPos, facing, facingPos, facingState, random);
     }
 }

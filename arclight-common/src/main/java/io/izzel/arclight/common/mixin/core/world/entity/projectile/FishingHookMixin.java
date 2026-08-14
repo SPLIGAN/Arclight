@@ -1,6 +1,7 @@
 package io.izzel.arclight.common.mixin.core.world.entity.projectile;
 
 import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
+import io.izzel.arclight.common.mixin.core.world.entity.ExperienceOrbAccessor;
 import io.izzel.arclight.common.bridge.core.server.level.ServerPlayerBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.projectile.FishingHookBridge;
 import io.izzel.arclight.mixin.Decorate;
@@ -10,7 +11,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.Entity;
-import io.izzel.arclight.common.mixin.core.world.entity.ExperienceOrbAccessor;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
@@ -141,6 +141,7 @@ public abstract class FishingHookMixin extends ProjectileMixin implements Fishin
             if (expToDrop <= 0) {
                 return false;
             }
+            // 26.1: value field removed; use invoker for setValue.
             ((ExperienceOrbAccessor) orb).arclight$setValue(expToDrop);
         }
         return (boolean) DecorationOps.callsite().invoke(instance, entity);

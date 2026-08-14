@@ -22,7 +22,8 @@ public abstract class AbstractHurtingProjectileMixin extends ProjectileMixin imp
         this.isIncendiary = true;
     }
 
-    @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/AbstractHurtingProjectile;discard()V"))
+    // 26.1: AbstractHurtingProjectile package under hurtingprojectile.
+    @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/hurtingprojectile/AbstractHurtingProjectile;discard()V"))
     private void arclight$despawn(CallbackInfo ci) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DESPAWN);
     }

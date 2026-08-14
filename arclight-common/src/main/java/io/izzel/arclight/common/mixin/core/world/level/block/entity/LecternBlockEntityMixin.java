@@ -12,11 +12,14 @@ import net.minecraft.world.Container;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ContainerData;
 import net.minecraft.world.inventory.LecternMenu;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.entity.LecternBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec2;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.command.CommandSender;
@@ -27,7 +30,9 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nullable;
 
@@ -37,7 +42,16 @@ public abstract class LecternBlockEntityMixin extends BlockEntityMixin implement
     // @formatter:off
     @Shadow @Final public Container bookAccess;
     @Shadow @Final private ContainerData dataAccess;
+    @Shadow public abstract ItemStack getBook();
     // @formatter:on
+
+    // 26.1: book drop lives here (was LecternBlock.popBook). Skip spawning empty book items.
+    @Inject(method = "preRemoveSideEffects", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/core/Direction;getStepX()I"))
+    private void arclight$returnIfEmpty(BlockPos pos, BlockState state, CallbackInfo ci) {
+        if (this.getBook().isEmpty()) {
+            ci.cancel();
+        }
+    }
 
     @Redirect(method = "createCommandSourceStack", at = @At(value = "NEW", target = "(Lnet/minecraft/commands/CommandSource;Lnet/minecraft/world/phys/Vec3;Lnet/minecraft/world/phys/Vec2;Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/server/permissions/PermissionSet;Ljava/lang/String;Lnet/minecraft/network/chat/Component;Lnet/minecraft/server/MinecraftServer;Lnet/minecraft/world/entity/Entity;)Lnet/minecraft/commands/CommandSourceStack;"))
     private CommandSourceStack arclight$source(CommandSource source, Vec3 vec3d, Vec2 vec2f, ServerLevel world, net.minecraft.server.permissions.PermissionSet permissionSet, String s, Component component, MinecraftServer server, @Nullable Entity entity) {

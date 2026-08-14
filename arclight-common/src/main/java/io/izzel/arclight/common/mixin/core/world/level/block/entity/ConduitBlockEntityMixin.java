@@ -4,6 +4,7 @@ import io.izzel.arclight.common.bridge.core.world.entity.player.PlayerBridge;
 import io.izzel.arclight.common.bridge.core.world.damagesource.DamageSourceBridge;
 import io.izzel.arclight.common.mod.mixins.annotation.TransformAccess;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.damagesource.DamageSources;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -27,7 +28,8 @@ import java.util.List;
 public abstract class ConduitBlockEntityMixin extends BlockEntityMixin {
 
     // @formatter:off
-    @Shadow private static void updateDestroyTarget(Level level, BlockPos blockPos, BlockState blockState, List<BlockPos> list, ConduitBlockEntity conduitBlockEntity) {}
+    // 26.1: attack path renamed to updateAndAttackTarget(ServerLevel, ..., boolean hunting).
+    @Shadow private static void updateAndAttackTarget(ServerLevel level, BlockPos blockPos, BlockState blockState, ConduitBlockEntity conduitBlockEntity, boolean hunting) {}
     // @formatter:on
 
     @Redirect(method = "applyEffects", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;addEffect(Lnet/minecraft/world/effect/MobEffectInstance;)Z"))
@@ -36,8 +38,8 @@ public abstract class ConduitBlockEntityMixin extends BlockEntityMixin {
         return player.addEffect(eff);
     }
 
-    @Redirect(method = "updateDestroyTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/damagesource/DamageSources;magic()Lnet/minecraft/world/damagesource/DamageSource;"))
-    private static DamageSource arclight$attackReason(DamageSources instance, Level level, BlockPos pos) {
+    @Redirect(method = "updateAndAttackTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/damagesource/DamageSources;magic()Lnet/minecraft/world/damagesource/DamageSource;"))
+    private static DamageSource arclight$attackReason(DamageSources instance, ServerLevel level, BlockPos pos) {
         return ((DamageSourceBridge) instance.magic()).bridge$directBlock(CraftBlock.at(level, pos));
     }
 
@@ -49,8 +51,8 @@ public abstract class ConduitBlockEntityMixin extends BlockEntityMixin {
 
     private static boolean arclight$damageTarget = true;
 
-    @Inject(method = "updateDestroyTarget", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;playSound(Lnet/minecraft/world/entity/player/Player;DDDLnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V"))
-    private static void arclight$returnIfNot(Level level, BlockPos blockPos, BlockState blockState, List<BlockPos> list, ConduitBlockEntity conduitBlockEntity, CallbackInfo ci) {
+    @Inject(method = "updateAndAttackTarget", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;playSound(Lnet/minecraft/world/entity/Entity;DDDLnet/minecraft/sounds/SoundEvent;Lnet/minecraft/sounds/SoundSource;FF)V"))
+    private static void arclight$returnIfNot(ServerLevel level, BlockPos blockPos, BlockState blockState, ConduitBlockEntity conduitBlockEntity, boolean hunting, CallbackInfo ci) {
         if (!arclight$damageTarget) {
             ci.cancel();
             level.sendBlockUpdated(blockPos, blockState, blockState, 2);
@@ -60,7 +62,7 @@ public abstract class ConduitBlockEntityMixin extends BlockEntityMixin {
     @TransformAccess(Opcodes.ACC_PUBLIC | Opcodes.ACC_STATIC)
     private static void updateDestroyTarget(Level level, BlockPos blockPos, BlockState blockState, List<BlockPos> list, ConduitBlockEntity conduitBlockEntity, boolean damageTarget) {
         arclight$damageTarget = damageTarget;
-        updateDestroyTarget(level, blockPos, blockState, list, conduitBlockEntity);
+        updateAndAttackTarget((ServerLevel) level, blockPos, blockState, conduitBlockEntity, list.size() >= 42);
         arclight$damageTarget = true;
     }
 }

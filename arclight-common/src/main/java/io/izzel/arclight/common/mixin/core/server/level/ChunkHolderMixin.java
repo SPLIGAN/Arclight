@@ -20,6 +20,7 @@ import org.spongepowered.asm.mixin.gen.Accessor;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
@@ -102,10 +103,10 @@ public abstract class ChunkHolderMixin extends GenerationChunkHolder implements 
 
     @Inject(method = "blockChanged", cancellable = true,
             at = @At(value = "FIELD", ordinal = 0, target = "Lnet/minecraft/server/level/ChunkHolder;changedBlocksPerSection:[Lit/unimi/dsi/fastutil/shorts/ShortSet;"))
-    private void arclight$outOfBound(BlockPos pos, CallbackInfo ci) {
+    private void arclight$outOfBound(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         int i = this.levelHeightAccessor.getSectionIndex(pos.getY());
         if (i < 0 || i >= this.changedBlocksPerSection.length) {
-            ci.cancel();
+            cir.setReturnValue(false);
         }
     }
 

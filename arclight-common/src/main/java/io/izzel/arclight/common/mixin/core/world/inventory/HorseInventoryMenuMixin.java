@@ -7,9 +7,8 @@ import net.minecraft.world.entity.animal.equine.AbstractHorse;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.HorseInventoryMenu;
 import org.bukkit.craftbukkit.inventory.CraftInventoryView;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
@@ -17,9 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(HorseInventoryMenu.class)
 public abstract class HorseInventoryMenuMixin extends AbstractContainerMenuMixin {
 
-    // @formatter:off
-    @Shadow @Final private Container horseContainer;
-    // @formatter:on
+    @Unique private Container arclight$horseContainer;
 
     CraftInventoryView<HorseInventoryMenu, ?> bukkitEntity;
     Inventory playerInventory;
@@ -27,6 +24,7 @@ public abstract class HorseInventoryMenuMixin extends AbstractContainerMenuMixin
     @Inject(method = "<init>", at = @At("RETURN"))
     public void arclight$init(int i, Inventory inventory, Container container, AbstractHorse abstractHorse, int j, CallbackInfo ci) {
         this.playerInventory = inventory;
+        this.arclight$horseContainer = container;
     }
 
     @Override
@@ -35,6 +33,6 @@ public abstract class HorseInventoryMenuMixin extends AbstractContainerMenuMixin
             return bukkitEntity;
         }
         return bukkitEntity = new CraftInventoryView<>(((PlayerBridge) playerInventory.player).bridge$getBukkitEntity(),
-            ((IInventoryBridge) this.horseContainer).getOwner().getInventory(), (HorseInventoryMenu) (Object) this);
+            ((IInventoryBridge) this.arclight$horseContainer).getOwner().getInventory(), (HorseInventoryMenu) (Object) this);
     }
 }

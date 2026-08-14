@@ -7,13 +7,14 @@ import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(PhantomSpawner.class)
 public class PhantomSpawnerMixin {
 
+    // 26.1: CustomSpawner.tick is void tick(ServerLevel, boolean) — no longer returns int / dual boolean.
     @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntityWithPassengers(Lnet/minecraft/world/entity/Entity;)V"))
-    private void arclight$addSpawnReason(ServerLevel level, boolean bl, boolean bl2, CallbackInfoReturnable<Integer> cir) {
-        ((ServerLevelBridge)level).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.NATURAL);
+    private void arclight$addSpawnReason(ServerLevel level, boolean spawnEnemies, CallbackInfo ci) {
+        ((ServerLevelBridge) level).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.NATURAL);
     }
 }

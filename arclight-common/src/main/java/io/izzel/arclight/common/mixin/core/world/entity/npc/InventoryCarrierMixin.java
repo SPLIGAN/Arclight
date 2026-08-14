@@ -2,6 +2,7 @@ package io.izzel.arclight.common.mixin.core.world.entity.npc;
 
 import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.mod.server.world.inventory.ArclightInventoryView;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.item.ItemEntity;
@@ -22,12 +23,13 @@ public interface InventoryCarrierMixin {
 
     /**
      * @author IzzelAliz
-     * @reason
+     * @reason Bukkit EntityPickupItemEvent.
      */
     @Overwrite
-    static void pickUpItem(Mob mob, InventoryCarrier carrier, ItemEntity itemEntity) {
+    // 26.1: pickUpItem takes ServerLevel first.
+    static void pickUpItem(ServerLevel level, Mob mob, InventoryCarrier carrier, ItemEntity itemEntity) {
         ItemStack itemstack = itemEntity.getItem();
-        if (mob.wantsToPickUp((net.minecraft.server.level.ServerLevel) mob.level(), itemstack)) {
+        if (mob.wantsToPickUp(level, itemstack)) {
             SimpleContainer simplecontainer = carrier.getInventory();
             boolean flag = simplecontainer.canAddItem(itemstack);
             if (!flag) {
@@ -49,6 +51,5 @@ public interface InventoryCarrierMixin {
                 itemstack.setCount(itemstack1.getCount());
             }
         }
-
     }
 }

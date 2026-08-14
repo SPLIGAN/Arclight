@@ -5,11 +5,13 @@ import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
 import net.minecraft.core.BlockPos;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.crafting.CampfireCookingRecipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.item.crafting.SingleRecipeInput;
 import net.minecraft.world.level.block.entity.CampfireBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import org.bukkit.Bukkit;
@@ -32,12 +34,13 @@ import java.util.Optional;
 public abstract class CampfireBlockEntityMixin extends BlockEntityMixin {
 
     // @formatter:off
-    @Shadow public abstract Optional<RecipeHolder<CampfireCookingRecipe>> getCookableRecipe(ItemStack p_59052_);
     @Shadow @Final public int[] cookingTime;
     // @formatter:on
 
+    // 26.1: cookTick takes ServerLevel + CachedCheck.
     @Decorate(method = "cookTick", inject = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/Containers;dropItemStack(Lnet/minecraft/world/level/Level;DDDLnet/minecraft/world/item/ItemStack;)V"))
-    private static void arclight$cookEvent(Level level, BlockPos blockPos, BlockState blockState, CampfireBlockEntity campfireBlockEntity,
+    private static void arclight$cookEvent(ServerLevel level, BlockPos blockPos, BlockState blockState, CampfireBlockEntity campfireBlockEntity,
+                                           RecipeManager.CachedCheck<SingleRecipeInput, CampfireCookingRecipe> check,
                                            @Local(ordinal = 0) ItemStack sourceStack, @Local(ordinal = -1) ItemStack resultStack) throws Throwable {
         CraftItemStack source = CraftItemStack.asCraftMirror(sourceStack);
         org.bukkit.inventory.ItemStack result = CraftItemStack.asBukkitCopy(resultStack);
@@ -55,10 +58,16 @@ public abstract class CampfireBlockEntityMixin extends BlockEntityMixin {
         DecorationOps.blackhole().invoke(resultStack);
     }
 
+    // 26.1: placeFood(ServerLevel, ...); getCookableRecipe removed — recipe is looked up inline.
     @Inject(method = "placeFood", locals = LocalCapture.CAPTURE_FAILHARD,
         at = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/CampfireBlockEntity;cookingProgress:[I"))
-    private void arclight$cookStart(LivingEntity p_238285_, ItemStack stack, int p_238287_, CallbackInfoReturnable<Boolean> cir, int i) {
-        var event = new CampfireStartEvent(CraftBlock.at(this.level, this.worldPosition), CraftItemStack.asCraftMirror(stack), (CampfireRecipe) ((RecipeHolderBridge) (Object) getCookableRecipe(stack).get()).bridge$toBukkitRecipe());
+    private void arclight$cookStart(ServerLevel level, LivingEntity entity, ItemStack stack, CallbackInfoReturnable<Boolean> cir,
+                                    int i, ItemStack slotStack, Optional<RecipeHolder<CampfireCookingRecipe>> recipe) {
+        var event = new CampfireStartEvent(
+            CraftBlock.at(this.level, this.worldPosition),
+            CraftItemStack.asCraftMirror(stack),
+            (CampfireRecipe) ((RecipeHolderBridge) (Object) recipe.get()).bridge$toBukkitRecipe()
+        );
         Bukkit.getPluginManager().callEvent(event);
         this.cookingTime[i] = event.getTotalCookTime();
     }

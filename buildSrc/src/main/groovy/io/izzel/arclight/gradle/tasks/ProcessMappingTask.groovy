@@ -85,7 +85,16 @@ class ProcessMappingTask implements Runnable {
                 @Override
                 MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     if (name != null && !name.startsWith('<')) {
-                        identitySrg.append('    ').append(Type.getReturnType(descriptor).className).append(' ').append(name).append(descriptor).append(' -> ').append(name).append('\n')
+                        // SpecialSource expects ProGuard method lines:
+                        //   returnType name(argType1,argType2) -> mappedName
+                        // Embedding a raw JVM descriptor (e.g. name(Ljava/lang/String;)V) makes
+                        // ProguardUtil.toJVMType double-wrap object types into L...;; and then
+                        // MethodDescriptor.transform fails with "Unrecognized type ... ;".
+                        def args = Type.getArgumentTypes(descriptor).collect { it.className }.join(',')
+                        identitySrg.append('    ')
+                                .append(Type.getReturnType(descriptor).className).append(' ')
+                                .append(name).append('(').append(args).append(') -> ')
+                                .append(name).append('\n')
                     }
                     return null
                 }

@@ -1,6 +1,5 @@
 package io.izzel.arclight.common.mixin.core.world.food;
 
-import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.LivingEntityBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.player.PlayerBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerPlayerBridge;
@@ -30,10 +29,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class FoodDataMixin implements FoodDataBridge {
 
     // @formatter:off
-    @Shadow public int foodLevel;
+    @Shadow private int foodLevel;
     @Shadow public abstract void eat(int foodLevelIn, float foodSaturationModifier);
-    @Shadow public float saturationLevel;
-    @Shadow private int lastFoodLevel;
+    @Shadow private float saturationLevel;
     // @formatter:on
 
     private Player entityhuman;
@@ -77,23 +75,24 @@ public abstract class FoodDataMixin implements FoodDataBridge {
     }
 
     @Inject(method = "tick", at = @At(value = "INVOKE_ASSIGN", remap = false, target = "Ljava/lang/Math;max(II)I"))
-    public void arclight$foodLevelChange2(Player player, CallbackInfo ci) {
+    public void arclight$foodLevelChange2(ServerPlayer player, CallbackInfo ci) {
         if (entityhuman == null) {
-            return;
+            entityhuman = player;
         }
-        FoodLevelChangeEvent event = CraftEventFactory.callFoodLevelChangeEvent(entityhuman, Math.max(this.lastFoodLevel - 1, 0));
+        int lastFoodLevel = this.foodLevel;
+        FoodLevelChangeEvent event = CraftEventFactory.callFoodLevelChangeEvent(entityhuman, Math.max(lastFoodLevel - 1, 0));
 
         if (!event.isCancelled()) {
             this.foodLevel = event.getFoodLevel();
         } else {
-            this.foodLevel = this.lastFoodLevel;
+            this.foodLevel = lastFoodLevel;
         }
 
-        ((ServerPlayer) entityhuman).connection.send(new ClientboundSetHealthPacket(((ServerPlayerBridge) entityhuman).bridge$getBukkitEntity().getScaledHealth(), this.foodLevel, this.saturationLevel));
+        player.connection.send(new ClientboundSetHealthPacket(((ServerPlayerBridge) entityhuman).bridge$getBukkitEntity().getScaledHealth(), this.foodLevel, this.saturationLevel));
     }
 
-    @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;heal(F)V"))
-    public void arclight$heal(Player player, CallbackInfo ci) {
+    @Inject(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;heal(F)V"))
+    public void arclight$heal(ServerPlayer player, CallbackInfo ci) {
         if (entityhuman == null) {
             entityhuman = player;
         }

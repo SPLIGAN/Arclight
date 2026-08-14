@@ -18,6 +18,7 @@ import net.minecraft.world.inventory.ClickAction;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.ContainerSynchronizer;
 import net.minecraft.world.inventory.MenuType;
+import net.minecraft.world.inventory.RemoteSlot;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.bukkit.Bukkit;
@@ -46,15 +47,16 @@ public abstract class AbstractContainerMenuMixin implements AbstractContainerMen
     // @formatter:off
     @Shadow private int quickcraftType;
     @Shadow @Final @javax.annotation.Nullable private MenuType<?> menuType;
-    @Shadow private ItemStack remoteCarried;
+    // 26.1: remote carried state is tracked via RemoteSlot instead of a copied ItemStack.
+    @Shadow private RemoteSlot remoteCarried;
     @Shadow public abstract ItemStack getCarried();
     @Shadow @javax.annotation.Nullable private ContainerSynchronizer synchronizer;
     @Shadow public abstract void setCarried(ItemStack p_150439_);
     @Shadow public NonNullList<Slot> slots;
-    @Shadow protected abstract SlotAccess createCarriedSlotAccess();
+    @Shadow private SlotAccess createCarriedSlotAccess() { return null; }
     @Shadow public abstract void sendAllDataToRemote();
     @Shadow public abstract int incrementStateId();
-    @Shadow protected abstract boolean tryItemClickBehaviourOverride(Player arg, ClickAction arg2, Slot arg3, ItemStack arg4, ItemStack arg5);
+    @Shadow private boolean tryItemClickBehaviourOverride(Player arg, ClickAction arg2, Slot arg3, ItemStack arg4, ItemStack arg5) { return false; }
     // @formatter:on
 
     public boolean checkReachable = true;
@@ -101,9 +103,10 @@ public abstract class AbstractContainerMenuMixin implements AbstractContainerMen
     }
 
     public void broadcastCarriedItem() {
-        this.remoteCarried = this.getCarried().copy();
+        ItemStack carried = this.getCarried();
+        this.remoteCarried.force(carried);
         if (this.synchronizer != null) {
-            this.synchronizer.sendCarriedChange((AbstractContainerMenu) (Object) this, this.remoteCarried);
+            this.synchronizer.sendCarriedChange((AbstractContainerMenu) (Object) this, carried.copy());
         }
     }
 

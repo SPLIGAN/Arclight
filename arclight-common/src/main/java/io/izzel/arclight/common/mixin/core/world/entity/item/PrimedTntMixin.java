@@ -72,7 +72,7 @@ public abstract class PrimedTntMixin extends EntityMixin {
             this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.EXPLODE);
             this.discard();
         } else {
-            this.updateInWaterStateAndDoFluidPushing();
+            this.updateFluidInteraction();
             if (this.level().isClientSide()) {
                 this.level().addParticle(ParticleTypes.SMOKE, this.getX(), this.getY() + 0.5D, this.getZ(), 0.0D, 0.0D, 0.0D);
             }

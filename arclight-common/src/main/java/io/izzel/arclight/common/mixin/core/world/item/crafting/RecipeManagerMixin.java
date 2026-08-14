@@ -1,12 +1,7 @@
 package io.izzel.arclight.common.mixin.core.world.item.crafting;
 
-import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableMultimap;
-import com.google.common.collect.LinkedHashMultimap;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Multimap;
-import com.google.gson.JsonElement;
 import io.izzel.arclight.common.bridge.core.world.item.crafting.RecipeManagerBridge;
+import io.izzel.arclight.common.bridge.core.world.item.crafting.RecipeMapBridge;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -15,10 +10,9 @@ import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import net.minecraft.world.item.crafting.RecipeInput;
 import net.minecraft.world.item.crafting.RecipeManager;
+import net.minecraft.world.item.crafting.RecipeMap;
 import net.minecraft.world.item.crafting.RecipeType;
 import net.minecraft.world.level.Level;
-import org.slf4j.Logger;
-import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
@@ -27,65 +21,33 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nullable;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 @Mixin(RecipeManager.class)
 public abstract class RecipeManagerMixin implements RecipeManagerBridge {
 
-    // @formatter:off
-    @Shadow private boolean hasErrors;
-    @Shadow @Final private static Logger LOGGER;
-    @Shadow private Map<ResourceKey<Recipe<?>>, RecipeHolder<?>> byName;
-    @Shadow public Multimap<RecipeType<?>, RecipeHolder<?>> byType;
-    @Shadow protected abstract <I extends RecipeInput, T extends Recipe<I>> Collection<RecipeHolder<T>> byType(RecipeType<T> recipeType);
-    // @formatter:on
+    @Shadow private RecipeMap recipes;
 
-    @Inject(method = "apply(Ljava/util/Map;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V", at = @At("RETURN"))
-    private void arclight$makeMutable(Map<Identifier, JsonElement> map, ResourceManager resourceManager, ProfilerFiller profilerFiller, CallbackInfo ci) {
-        this.byName = new HashMap<>(this.byName);
-        this.byType = LinkedHashMultimap.create(this.byType);
-    }
-
-    @Inject(method = "replaceRecipes", at = @At("RETURN"))
-    private void arclight$replaceMutable(Iterable<RecipeHolder<?>> iterable, CallbackInfo ci) {
-        this.byName = new HashMap<>(this.byName);
-        this.byType = LinkedHashMultimap.create(this.byType);
+    @Inject(method = "apply(Lnet/minecraft/world/item/crafting/RecipeMap;Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/util/profiling/ProfilerFiller;)V", at = @At("RETURN"))
+    private void arclight$makeMutable(RecipeMap recipeMap, ResourceManager resourceManager, ProfilerFiller profilerFiller, CallbackInfo ci) {
+        ((RecipeMapBridge) (Object) this.recipes).bridge$makeMutable();
     }
 
     /**
      * @author IzzelAliz
-     * @reason
+     * @reason CraftBukkit SPIGOT-4638: last matching recipe gets priority
      */
     @Overwrite
-    public <I extends RecipeInput, T extends Recipe<I>> Optional<RecipeHolder<T>> getRecipeFor(RecipeType<T> recipes, I i0, Level world, @Nullable RecipeHolder<T> recipeholder) {
-        // CraftBukkit start
-        List<RecipeHolder<T>> list = this.byType(recipes).stream().filter((recipeholder1) -> {
-            return recipeholder1.value().matches(i0, world);
-        }).toList();
-        Optional<RecipeHolder<T>> recipe = (list.isEmpty() || i0.isEmpty()) ? Optional.empty() : (recipeholder != null && recipeholder.value().matches(i0, world) ? Optional.of(recipeholder) : Optional.of(list.getLast())); // CraftBukkit - SPIGOT-4638: last recipe gets priority
-        return recipe;
-        // CraftBukkit end
+    public <I extends RecipeInput, T extends Recipe<I>> Optional<RecipeHolder<T>> getRecipeFor(RecipeType<T> type, I input, Level level, @Nullable RecipeHolder<T> lastRecipe) {
+        List<RecipeHolder<T>> list = this.recipes.byType(type).stream().filter(holder -> holder.value().matches(input, level)).toList();
+        return (list.isEmpty() || input.isEmpty())
+            ? Optional.empty()
+            : (lastRecipe != null && lastRecipe.value().matches(input, level) ? Optional.of(lastRecipe) : Optional.of(list.getLast()));
     }
 
     public void addRecipe(RecipeHolder<?> recipe) {
-        if (this.byType instanceof ImmutableMultimap<RecipeType<?>, RecipeHolder<?>>) {
-            this.byType = LinkedHashMultimap.create(this.byType);
-        }
-        if (this.byName instanceof ImmutableMap) {
-            this.byName = new HashMap<>(byName);
-        }
-        Collection<RecipeHolder<?>> map = this.byType.get(recipe.value().getType());
-
-        if (this.byName.containsKey(recipe.id())) {
-            throw new IllegalStateException("Duplicate recipe ignored with ID " + recipe.id());
-        } else {
-            map.add(recipe);
-            this.byName.put(recipe.id(), recipe);
-        }
+        ((RecipeMapBridge) (Object) this.recipes).bridge$addRecipe(recipe);
     }
 
     @Override
@@ -94,13 +56,18 @@ public abstract class RecipeManagerMixin implements RecipeManagerBridge {
     }
 
     public boolean removeRecipe(Identifier mcKey) {
-        byType.values().removeIf(recipe -> recipe.id().identifier().equals(mcKey));
-        return byName.entrySet().removeIf(entry -> entry.getKey().identifier().equals(mcKey));
+        ResourceKey<Recipe<?>> toRemove = null;
+        for (RecipeHolder<?> holder : this.recipes.values()) {
+            if (holder.id().identifier().equals(mcKey)) {
+                toRemove = holder.id();
+                break;
+            }
+        }
+        return toRemove != null && ((RecipeMapBridge) (Object) this.recipes).bridge$removeRecipe(toRemove);
     }
 
     public void clearRecipes() {
-        this.byType = LinkedHashMultimap.create();
-        this.byName = Maps.newHashMap();
+        ((RecipeMapBridge) (Object) this.recipes).bridge$clear();
     }
 
     @Override

@@ -41,10 +41,28 @@ import java.util.concurrent.ConcurrentHashMap;
 public abstract class NetworkRegistryMixin {
 
     @Shadow @Final @Mutable private static Map<ConnectionProtocol, Map<Identifier, PayloadRegistration<?>>> PAYLOAD_REGISTRATIONS;
+    @Shadow @Final @Mutable private static Map<ConnectionProtocol, Map<Identifier, net.neoforged.neoforge.network.handling.IPayloadHandler<?>>> SERVERBOUND_HANDLERS;
+    @Shadow @Final @Mutable private static Map<ConnectionProtocol, Map<Identifier, net.neoforged.neoforge.network.handling.IPayloadHandler<?>>> CLIENTBOUND_HANDLERS;
 
     @Redirect(method = "<clinit>", at = @At(value = "FIELD", opcode = Opcodes.PUTSTATIC, target = "Lnet/neoforged/neoforge/network/registration/NetworkRegistry;PAYLOAD_REGISTRATIONS:Ljava/util/Map;"))
     private static void arclight$useConcurrentMap(Map<ConnectionProtocol, Map<Identifier, PayloadRegistration<?>>> value) {
         PAYLOAD_REGISTRATIONS = ImmutableMap.of(
+                ConnectionProtocol.CONFIGURATION, new ConcurrentHashMap<>(),
+                ConnectionProtocol.PLAY, new ConcurrentHashMap<>()
+        );
+    }
+
+    @Redirect(method = "<clinit>", at = @At(value = "FIELD", opcode = Opcodes.PUTSTATIC, target = "Lnet/neoforged/neoforge/network/registration/NetworkRegistry;SERVERBOUND_HANDLERS:Ljava/util/Map;"))
+    private static void arclight$serverboundHandlers(Map<ConnectionProtocol, Map<Identifier, net.neoforged.neoforge.network.handling.IPayloadHandler<?>>> value) {
+        SERVERBOUND_HANDLERS = ImmutableMap.of(
+                ConnectionProtocol.CONFIGURATION, new ConcurrentHashMap<>(),
+                ConnectionProtocol.PLAY, new ConcurrentHashMap<>()
+        );
+    }
+
+    @Redirect(method = "<clinit>", at = @At(value = "FIELD", opcode = Opcodes.PUTSTATIC, target = "Lnet/neoforged/neoforge/network/registration/NetworkRegistry;CLIENTBOUND_HANDLERS:Ljava/util/Map;"))
+    private static void arclight$clientboundHandlers(Map<ConnectionProtocol, Map<Identifier, net.neoforged.neoforge.network.handling.IPayloadHandler<?>>> value) {
+        CLIENTBOUND_HANDLERS = ImmutableMap.of(
                 ConnectionProtocol.CONFIGURATION, new ConcurrentHashMap<>(),
                 ConnectionProtocol.PLAY, new ConcurrentHashMap<>()
         );

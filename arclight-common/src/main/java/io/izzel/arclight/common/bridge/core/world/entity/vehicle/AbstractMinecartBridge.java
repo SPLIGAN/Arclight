@@ -5,4 +5,6 @@ public interface AbstractMinecartBridge {
     default boolean bridge$forge$canUseRail() {
         return true;
     }
+
+    boolean bridge$slowWhenEmpty();
 }

@@ -7,18 +7,19 @@ import io.izzel.arclight.common.bridge.core.world.item.crafting.RecipeHolderBrid
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
-import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
+import it.unimi.dsi.fastutil.objects.Reference2IntOpenHashMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.NonNullList;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.ExperienceOrb;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.crafting.Recipe;
 import net.minecraft.world.item.crafting.RecipeHolder;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.world.level.block.entity.FuelValues;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 import org.bukkit.Bukkit;
@@ -37,7 +38,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.Slice;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,9 +47,11 @@ public abstract class AbstractFurnaceBlockEntityMixin extends BaseContainerBlock
 
     // @formatter:off
     @Shadow protected NonNullList<ItemStack> items;
-    @Shadow protected abstract int getBurnDuration(ItemStack stack);
-    @Shadow protected abstract boolean isLit();
-    @Shadow @Final private Object2IntOpenHashMap<Identifier> recipesUsed;
+    // 26.1: burn duration lookup requires FuelValues from the level.
+    @Shadow protected abstract int getBurnDuration(FuelValues fuelValues, ItemStack stack);
+    @Shadow private int litTimeRemaining;
+    // 26.1: recipesUsed keyed by ResourceKey<Recipe<?>> instead of Identifier.
+    @Shadow @Final private Reference2IntOpenHashMap<ResourceKey<Recipe<?>>> recipesUsed;
     @Shadow public abstract List<RecipeHolder<?>> getRecipesToAwardAndPopExperience(ServerLevel p_154996_, Vec3 p_154997_);
     // @formatter:on
 
@@ -63,22 +65,22 @@ public abstract class AbstractFurnaceBlockEntityMixin extends BaseContainerBlock
     // @Decorate(method = "burn", at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/core/NonNullList;get(I)Ljava/lang/Object;"))
     // private static <E> E arclight$furnaceSmelt(NonNullList<E> instance, int i, @Local(ordinal = 0) AbstractFurnaceBlockEntity blockEntity, @Local(ordinal = -1) ItemStack itemStack2, @Local(ordinal = -2) ItemStack itemStack1) throws Throwable
 
-    @Decorate(method = "serverTick", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity;isLit()Z"),
-        slice = @Slice(from = @At(value = "FIELD", target = "Lnet/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity;litDuration:I")))
-    private static boolean arclight$setBurnTime(AbstractFurnaceBlockEntity furnace) throws Throwable {
-        ItemStack itemStack = furnace.getItem(1);
+    // 26.1: isLit() was inlined; fire FurnaceBurnEvent when burn duration is computed for new fuel.
+    @Decorate(method = "serverTick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity;getBurnDuration(Lnet/minecraft/world/level/block/entity/FuelValues;Lnet/minecraft/world/item/ItemStack;)I"))
+    private static int arclight$setBurnTime(AbstractFurnaceBlockEntity furnace, FuelValues fuelValues, ItemStack itemStack,
+                                            ServerLevel level, BlockPos pos, BlockState state, AbstractFurnaceBlockEntity blockEntity) throws Throwable {
+        int burnTime = (int) DecorationOps.callsite().invoke(furnace, fuelValues, itemStack);
         CraftItemStack fuel = CraftItemStack.asCraftMirror(itemStack);
-        FurnaceBurnEvent furnaceBurnEvent = new FurnaceBurnEvent(CraftBlock.at(furnace.level, furnace.getBlockPos()), fuel, furnace.litTimeRemaining);
+        FurnaceBurnEvent furnaceBurnEvent = new FurnaceBurnEvent(CraftBlock.at(level, pos), fuel, burnTime);
         Bukkit.getPluginManager().callEvent(furnaceBurnEvent);
         if (furnaceBurnEvent.isCancelled()) {
-            return (boolean) DecorationOps.cancel().invoke();
+            return 0;
         }
-        furnace.litTimeRemaining = furnaceBurnEvent.getBurnTime();
-        return (boolean) DecorationOps.callsite().invoke(furnace) && furnaceBurnEvent.isBurning();
+        return furnaceBurnEvent.isBurning() ? furnaceBurnEvent.getBurnTime() : 0;
     }
 
-    @Decorate(method = "serverTick", inject = true, at = @At(value = "FIELD", ordinal = 0, target = "Lnet/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity;cookingProgress:I"))
-    private static void arclight$startSmelt(Level level, BlockPos pos, BlockState state, AbstractFurnaceBlockEntity furnace,
+    @Decorate(method = "serverTick", inject = true, at = @At(value = "FIELD", ordinal = 0, target = "Lnet/minecraft/world/level/block/entity/AbstractFurnaceBlockEntity;cookingTimer:I"))
+    private static void arclight$startSmelt(ServerLevel level, BlockPos pos, BlockState state, AbstractFurnaceBlockEntity furnace,
                                             @Local(ordinal = -1) RecipeHolder<?> recipe) {
         if (recipe != null && furnace.cookingTimer == 0) {
             CraftItemStack source = CraftItemStack.asCraftMirror(furnace.getItem(0));
@@ -166,15 +168,15 @@ public abstract class AbstractFurnaceBlockEntityMixin extends BaseContainerBlock
 
     @Override
     public int bridge$getBurnDuration(ItemStack stack) {
-        return this.getBurnDuration(stack);
+        return this.getBurnDuration(this.level.fuelValues(), stack);
     }
 
     @Override
     public boolean bridge$isLit() {
-        return this.isLit();
+        return this.litTimeRemaining > 0;
     }
 
-    public Object2IntOpenHashMap<Identifier> getRecipesUsed() {
+    public Reference2IntOpenHashMap<ResourceKey<Recipe<?>>> getRecipesUsed() {
         return this.recipesUsed;
     }
 }

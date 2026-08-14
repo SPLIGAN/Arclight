@@ -25,7 +25,7 @@ public class ArclightPingEvent extends ServerListPingEvent {
     public ArclightPingEvent(Connection networkManager, MinecraftServer server) {
         super(((ConnectionBridge) networkManager).bridge$getHostname(), ((InetSocketAddress) networkManager.getRemoteAddress()).getAddress(), server.getMotd(), server.getPlayerList().getMaxPlayers());
         this.icon = ((CraftServer) Bukkit.getServer()).getServerIcon();
-        this.players = server.getPlayerList().players.toArray();
+        this.players = server.getPlayerList().getPlayers().toArray();
     }
 
     @Override

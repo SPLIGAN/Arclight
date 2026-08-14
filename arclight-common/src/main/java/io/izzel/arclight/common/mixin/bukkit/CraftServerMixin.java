@@ -13,7 +13,6 @@ import io.izzel.arclight.common.bridge.core.world.level.storage.LevelStorageSour
 import io.izzel.arclight.common.bridge.core.world.level.storage.PrimaryLevelDataBridge;
 import io.izzel.arclight.common.mod.server.ArclightServerLevels;
 import io.izzel.arclight.i18n.ArclightConfig;
-import jline.console.ConsoleReader;
 import net.minecraft.core.Registry;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.core.registries.Registries;
@@ -98,7 +97,6 @@ public abstract class CraftServerMixin implements CraftServerBridge {
     @Shadow @Final private CraftCommandMap commandMap;
     @Shadow @Final private SimplePluginManager pluginManager;
     @Shadow @Final protected DedicatedServer console;
-    @Shadow @Final @Mutable private String serverName;
     @Shadow @Final @Mutable protected DedicatedPlayerList playerList;
     @Shadow @Final @Mutable private List<CraftPlayer> playerView;
     @Shadow @Final private Map<String, World> worlds;
@@ -133,10 +131,7 @@ public abstract class CraftServerMixin implements CraftServerBridge {
     @Shadow
     public abstract DedicatedServer getServer();
 
-    @Inject(method = "<init>", at = @At("RETURN"))
-    public void arclight$setBrand(DedicatedServer console, PlayerList playerList, CallbackInfo ci) {
-        this.serverName = "Arclight";
-    }
+
 
     /**
      * @author IzzelAliz
@@ -160,19 +155,11 @@ public abstract class CraftServerMixin implements CraftServerBridge {
     public void bridge$setPlayerList(PlayerList playerList) {
         // Some plugin may change to a different PlayerList
         this.playerList = (DedicatedPlayerList) playerList;
-        this.playerView = Collections.unmodifiableList(Lists.transform(playerList.players, player ->
+        this.playerView = Collections.unmodifiableList(Lists.transform(playerList.getPlayers(), player ->
                 ((ServerPlayerBridge)player).bridge$getBukkitEntity()
                 ));
     }
 
-    /**
-     * @author IzzelAliz
-     * @reason
-     */
-    @Overwrite(remap = false)
-    public ConsoleReader getReader() {
-        return null;
-    }
 
     @Inject(method = "dispatchCommand", remap = false, cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lorg/spigotmc/AsyncCatcher;catchOp(Ljava/lang/String;)V"))
     private void arclight$returnIfFail(CommandSender sender, String commandLine, CallbackInfoReturnable<Boolean> cir) {

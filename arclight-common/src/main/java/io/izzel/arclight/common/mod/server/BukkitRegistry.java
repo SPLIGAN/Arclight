@@ -29,13 +29,15 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.crafting.CookingBookCategory;
 import net.minecraft.world.item.crafting.CraftingBookCategory;
-import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.dimension.LevelStem;
 import org.bukkit.*;
-import org.bukkit.block.Biome;
+import org.bukkit.craftbukkit.CraftArt;
+import org.bukkit.craftbukkit.CraftFluid;
+import org.bukkit.craftbukkit.CraftGameRule;
 import org.bukkit.craftbukkit.CraftStatistic;
+import org.bukkit.craftbukkit.block.CraftBiome;
 import org.bukkit.craftbukkit.inventory.CraftRecipe;
 import org.bukkit.craftbukkit.util.CraftMagicNumbers;
 import org.bukkit.craftbukkit.util.CraftNamespacedKey;
@@ -49,7 +51,6 @@ import org.bukkit.entity.SpawnCategory;
 import org.bukkit.event.player.PlayerRecipeBookSettingsChangeEvent;
 import org.bukkit.potion.PotionType;
 
-import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.*;
@@ -73,8 +74,6 @@ public class BukkitRegistry {
             .put(LevelStem.NETHER, World.Environment.NETHER)
             .put(LevelStem.END, World.Environment.THE_END)
             .build());
-    private static final Map<String, Art> ART_BY_NAME = Unsafe.getStatic(Art.class, "BY_NAME");
-    private static final Map<Integer, Art> ART_BY_ID = Unsafe.getStatic(Art.class, "BY_ID");
     private static final BiMap<Identifier, Statistic> STATS = HashBiMap.create(Unsafe.getStatic(CraftStatistic.class, "statistics"));
 
     public static void registerAll(DedicatedServer console) {
@@ -102,55 +101,34 @@ public class BukkitRegistry {
         }
     }
 
+    /**
+     * 26.1.2: GameRule is a Keyed interface via Registry.GAME_RULE → Registries.GAME_RULE.
+     * Warm CraftGameRule wrappers for every NMS rule (including mod-registered ones).
+     * Old GameRule(String, Class) map + GameRuleMixin String allowance is obsolete.
+     */
     private static void loadGameRules() {
-        Map<String, GameRule<?>> gameRules;
-        Constructor<GameRule> constructor;
         try {
-            var rules = GameRule.class.getDeclaredField("gameRules");
-            rules.setAccessible(true);
-            gameRules = (Map<String, GameRule<?>>) rules.get(null);
-            constructor = GameRule.class.getDeclaredConstructor(String.class, Class.class);
-            constructor.setAccessible(true);
-        } catch (ReflectiveOperationException e) {
-            ArclightServer.LOGGER.warn("Cannot register all custom game rules for bukkit!", e);
-            ArclightServer.LOGGER.warn("This is a bug, and will cause commands like mvgamerule not working properly. Please report this!");
-            return;
-        }
-        new net.minecraft.world.level.gamerules.GameRules(net.minecraft.world.flag.FeatureFlags.DEFAULT_FLAGS).visitGameRuleTypes(new net.minecraft.world.level.gamerules.GameRuleTypeVisitor() {
-            @Override
-            public <T> void visit(net.minecraft.world.level.gamerules.GameRule<T> rule) {
-                String id = rule.id();
-                if (!gameRules.containsKey(id)) {
-                    Class<?> clazz = rule.valueClass();
-                    try {
-                        var instance = constructor.newInstance(id, clazz);
-                        gameRules.put(id, instance);
-                    } catch (ReflectiveOperationException e) {
-                        ArclightServer.LOGGER.warn("Cannot register custom game rule {} for bukkit!", id, e);
-                    }
-                }
+            for (net.minecraft.world.level.gamerules.GameRule<?> rule : BuiltInRegistries.GAME_RULE) {
+                CraftGameRule.minecraftToBukkit(rule);
             }
-        });
+        } catch (Throwable e) {
+            ArclightServer.LOGGER.warn("Cannot warm Bukkit GameRule registry wrappers!", e);
+            ArclightServer.LOGGER.warn("This is a bug, and will cause commands like mvgamerule not working properly. Please report this!");
+        }
     }
 
+    /**
+     * 26.1+: Fluid is a Keyed OldEnum interface via Registry.FLUID.
+     * Warm CraftFluid wrappers for every NMS fluid (including mod-registered ones).
+     */
     private static void loadFluids() {
-        var id = org.bukkit.Fluid.values().length;
-        var newTypes = new ArrayList<org.bukkit.Fluid>();
-        Field keyField = Arrays.stream(org.bukkit.Fluid.class.getDeclaredFields()).filter(it -> it.getName().equals("key")).findAny().orElse(null);
-        long keyOffset = Unsafe.objectFieldOffset(keyField);
-        for (var fluidType : BuiltInRegistries.FLUID) {
-            var key = BuiltInRegistries.FLUID.getKey(fluidType);
-            var name = ResourceLocationUtil.standardize(key);
-            try {
-                org.bukkit.Fluid.valueOf(name);
-            } catch (Exception e) {
-                var bukkit = EnumHelper.makeEnum(org.bukkit.Fluid.class, name, id++, List.of(), List.of());
-                Unsafe.putObject(bukkit, keyOffset, CraftNamespacedKey.fromMinecraft(key));
-                newTypes.add(bukkit);
-                ArclightServer.LOGGER.debug("Registered {} as fluid {}", key, bukkit);
+        try {
+            for (var fluidType : BuiltInRegistries.FLUID) {
+                CraftFluid.minecraftToBukkit(fluidType);
             }
+        } catch (Throwable e) {
+            ArclightServer.LOGGER.warn("Cannot warm Bukkit Fluid registry wrappers!", e);
         }
-        EnumHelper.addEnums(org.bukkit.Fluid.class, newTypes);
     }
 
     private static void loadCraftingBookCategory() {
@@ -280,54 +258,37 @@ public class BukkitRegistry {
         putStatic(CraftStatistic.class, "statistics", STATS);
     }
 
+    /**
+     * 26.1+: Art is a Keyed OldEnum interface via Registry.ART → Registries.PAINTING_VARIANT.
+     * Warm CraftArt wrappers; plugins still use Art.*, Art.values(), Registry.ART.
+     */
     private static void loadArts(DedicatedServer console) {
-        int i = Art.values().length;
-        List<Art> newTypes = new ArrayList<>();
-        Field key = Arrays.stream(Art.class.getDeclaredFields()).filter(it -> it.getName().equals("key")).findAny().orElse(null);
-        long keyOffset = Unsafe.objectFieldOffset(key);
-        var reg = console.registryAccess().lookupOrThrow(Registries.PAINTING_VARIANT);
-        for (var paintingType : reg) {
-            var location = reg.getKey(paintingType);
-            String lookupName = location.getPath().toLowerCase(Locale.ROOT);
-            Art bukkit = Art.getByName(lookupName);
-            if (bukkit == null) {
-                String standardName = ResourceLocationUtil.standardize(location);
-                bukkit = EnumHelper.makeEnum(Art.class, standardName, i, ImmutableList.of(int.class, int.class, int.class), ImmutableList.of(i, paintingType.width(), paintingType.height()));
-                newTypes.add(bukkit);
-                Unsafe.putObject(bukkit, keyOffset, CraftNamespacedKey.fromMinecraft(location));
-                ART_BY_ID.put(i, bukkit);
-                ART_BY_NAME.put(lookupName, bukkit);
-                ArclightServer.LOGGER.debug("Registered {} as art {}", location, bukkit);
-                i++;
+        try {
+            var reg = console.registryAccess().lookupOrThrow(Registries.PAINTING_VARIANT);
+            for (var paintingType : reg) {
+                CraftArt.minecraftToBukkit(paintingType);
             }
+        } catch (Throwable e) {
+            ArclightServer.LOGGER.warn("Cannot warm Bukkit Art registry wrappers!", e);
         }
-        EnumHelper.addEnums(Art.class, newTypes);
     }
 
+    /**
+     * 26.1+: Biome is a Keyed OldEnum interface via Registry.BIOME.
+     * Warm CraftBiome wrappers for every NMS biome (including mod-registered ones).
+     */
     private static void loadBiomes(DedicatedServer console) {
-        int i = Biome.values().length;
-        List<Biome> newTypes = new ArrayList<>();
-        Field key = Arrays.stream(Biome.class.getDeclaredFields()).filter(it -> it.getName().equals("key")).findAny().orElse(null);
-        long keyOffset = Unsafe.objectFieldOffset(key);
-        var registry = console.registryAccess().lookupOrThrow(Registries.BIOME);
-        for (net.minecraft.world.level.biome.Biome biome : registry) {
-            var location = registry.getKey(biome);
-            String name = ResourceLocationUtil.standardize(location);
-            Biome bukkit;
-            try {
-                bukkit = Biome.valueOf(name);
-            } catch (Throwable t) {
-                bukkit = null;
+        try {
+            var registry = console.registryAccess().lookupOrThrow(Registries.BIOME);
+            int warmed = 0;
+            for (net.minecraft.world.level.biome.Biome biome : registry) {
+                CraftBiome.minecraftToBukkit(biome);
+                warmed++;
             }
-            if (bukkit == null) {
-                bukkit = EnumHelper.makeEnum(Biome.class, name, i++, ImmutableList.of(), ImmutableList.of());
-                newTypes.add(bukkit);
-                Unsafe.putObject(bukkit, keyOffset, CraftNamespacedKey.fromMinecraft(location));
-                ArclightServer.LOGGER.debug("Registered {} as biome {}", location, bukkit);
-            }
+            ArclightServer.LOGGER.info("registry.biome", warmed);
+        } catch (Throwable e) {
+            ArclightServer.LOGGER.warn("Cannot warm Bukkit Biome registry wrappers!", e);
         }
-        EnumHelper.addEnums(Biome.class, newTypes);
-        ArclightServer.LOGGER.info("registry.biome", newTypes.size());
     }
 
     public static void registerEnvironments(Registry<LevelStem> registry) {

@@ -9,14 +9,15 @@ import org.spongepowered.asm.mixin.Shadow;
 public abstract class AbstractArrowMixin_ActivationRange extends EntityMixin_ActivationRange {
 
     // @formatter:off
-    @Shadow public boolean inGround;
+    // 26.1: inGround moved to synched data accessors.
+    @Shadow protected abstract boolean isInGround();
     @Shadow protected int inGroundTime;
     // @formatter:on
 
     @Override
     public void inactiveTick() {
         super.inactiveTick();
-        if (this.inGround) {
+        if (this.isInGround()) {
             this.inGroundTime++;
         }
     }

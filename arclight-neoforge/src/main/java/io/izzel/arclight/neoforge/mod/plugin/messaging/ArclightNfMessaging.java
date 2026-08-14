@@ -90,7 +90,12 @@ public class ArclightNfMessaging {
     }
 
     private static Map<Identifier, IPayloadHandler<?>> handlerMap(Map<ConnectionProtocol, Map<Identifier, IPayloadHandler<?>>> root, ConnectionProtocol protocol) {
-        return root.computeIfAbsent(protocol, ignored -> new java.util.concurrent.ConcurrentHashMap<>());
+        // NeoForge keeps an ImmutableMap outer shell; never call computeIfAbsent on it.
+        var map = root.get(protocol);
+        if (map == null) {
+            throw new IllegalStateException("No NeoForge payload handler map for protocol " + protocol);
+        }
+        return map;
     }
 
     private static ChannelDirection getFlowFromRegistration(PayloadRegistration<?> registration) {

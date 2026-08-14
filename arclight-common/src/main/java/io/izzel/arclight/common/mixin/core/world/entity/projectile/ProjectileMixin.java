@@ -3,6 +3,7 @@ package io.izzel.arclight.common.mixin.core.world.entity.projectile;
 import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.mixin.core.world.entity.EntityMixin;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityReference;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.ProjectileDeflection;
 import net.minecraft.world.phys.BlockHitResult;
@@ -26,11 +27,13 @@ public abstract class ProjectileMixin extends EntityMixin {
     @Shadow @Nullable public abstract Entity getOwner();
     @Shadow protected void onHit(HitResult result) { }
     @Shadow protected abstract ProjectileDeflection hitTargetOrDeflectSelf(HitResult hitResult);
-    @Shadow public abstract boolean deflect(ProjectileDeflection projectileDeflection, @org.jetbrains.annotations.Nullable Entity entity, @org.jetbrains.annotations.Nullable Entity entity2, boolean bl);
+    // 26.1: owner arg is EntityReference rather than Entity.
+    @Shadow public abstract boolean deflect(ProjectileDeflection projectileDeflection, @org.jetbrains.annotations.Nullable Entity entity, @org.jetbrains.annotations.Nullable EntityReference<Entity> entity2, boolean bl);
     // @formatter:on
 
-    @Inject(method = "setOwner", at = @At("RETURN"))
-    private void arclight$updateSource(Entity entityIn, CallbackInfo ci) {
+    @Inject(method = "setOwner(Lnet/minecraft/world/entity/EntityReference;)V", at = @At("RETURN"))
+    private void arclight$updateSource(EntityReference<Entity> ownerRef, CallbackInfo ci) {
+        Entity entityIn = this.getOwner();
         if (entityIn != null) {
             CraftEntity entity = ((EntityBridge) entityIn).bridge$getBukkitEntity();
             if (entity instanceof ProjectileSource) {

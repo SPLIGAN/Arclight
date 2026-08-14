@@ -6,6 +6,8 @@ import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.InsideBlockEffectApplier;
+import net.minecraft.world.entity.InsideBlockEffectType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Blocks;
@@ -17,6 +19,7 @@ import org.bukkit.craftbukkit.event.CraftEventFactory;
 import org.bukkit.event.entity.EntityCombustByBlockEvent;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
@@ -25,13 +28,36 @@ public class BaseFireBlockMixin {
 
     // fireExtinguished implemented per class
 
-    @Decorate(method = "entityInside", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"))
-    private void arclight$onFire(Entity instance, float f, BlockState blockState, Level level, BlockPos blockPos) throws Throwable {
-        var event = new EntityCombustByBlockEvent(CraftBlock.at(level, blockPos), ((EntityBridge) instance).bridge$getBukkitEntity(), f);
-        Bukkit.getPluginManager().callEvent(event);
+    // 26.1: ignite is deferred via InsideBlockEffectType.FIRE_IGNITE → fireIgnite(Entity)
+    @Unique
+    private static final ThreadLocal<BlockPos> arclight$fireCombustPos = new ThreadLocal<>();
 
-        if (!event.isCancelled()) {
-            DecorationOps.callsite().invoke(instance, event.getDuration());
+    @Decorate(method = "entityInside", at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/world/entity/InsideBlockEffectApplier;apply(Lnet/minecraft/world/entity/InsideBlockEffectType;)V"))
+    private void arclight$captureFireCombust(InsideBlockEffectApplier applier, InsideBlockEffectType type,
+                                             BlockState state, Level level, BlockPos pos, Entity entity,
+                                             InsideBlockEffectApplier applierArg, boolean bl) throws Throwable {
+        arclight$fireCombustPos.set(pos.immutable());
+        DecorationOps.callsite().invoke(applier, type);
+    }
+
+    @Decorate(method = "fireIgnite", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"))
+    private static void arclight$onFire(Entity instance, float f) throws Throwable {
+        BlockPos pos = arclight$fireCombustPos.get();
+        try {
+            if (pos != null) {
+                var event = new EntityCombustByBlockEvent(
+                    CraftBlock.at(instance.level(), pos),
+                    ((EntityBridge) instance).bridge$getBukkitEntity(),
+                    f);
+                Bukkit.getPluginManager().callEvent(event);
+                if (event.isCancelled()) {
+                    return;
+                }
+                f = event.getDuration();
+            }
+            DecorationOps.callsite().invoke(instance, f);
+        } finally {
+            arclight$fireCombustPos.remove();
         }
     }
 

@@ -30,12 +30,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class AbstractArrowMixin extends ProjectileMixin {
 
     // @formatter:off
-    @Shadow public boolean inGround;
+    // 26.1: inGround is synched via EntityData; use accessors.
+    @Shadow protected abstract boolean isInGround();
+    @Shadow protected abstract void setInGround(boolean inGround);
     @Shadow public abstract boolean isNoPhysics();
     @Shadow public int shakeTime;
     @Shadow public net.minecraft.world.entity.projectile.arrow.AbstractArrow.Pickup pickup;
     @Shadow protected abstract ItemStack getPickupItem();
-    @Shadow public ItemStack pickupItemStack;
+    @Shadow protected abstract void setPickupItemStack(ItemStack stack);
     // @formatter:on
 
     @Decorate(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"))
@@ -47,17 +49,17 @@ public abstract class AbstractArrowMixin extends ProjectileMixin {
         }
     }
 
-    @Inject(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/AbstractArrow;discard()V"))
+    @Inject(method = "onHitEntity", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/arrow/AbstractArrow;discard()V"))
     private void arclight$hit(CallbackInfo ci) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.HIT);
     }
 
-    @Inject(method = "tickDespawn", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/AbstractArrow;discard()V"))
+    @Inject(method = "tickDespawn", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/arrow/AbstractArrow;discard()V"))
     private void arclight$despawn(CallbackInfo ci) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DESPAWN);
     }
 
-    @Decorate(method = "playerTouch", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/AbstractArrow;tryPickup(Lnet/minecraft/world/entity/player/Player;)Z"))
+    @Decorate(method = "playerTouch", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/arrow/AbstractArrow;tryPickup(Lnet/minecraft/world/entity/player/Player;)Z"))
     private boolean arclight$pickupArrow(net.minecraft.world.entity.projectile.arrow.AbstractArrow instance, Player player) throws Throwable {
         ItemStack itemstack = this.getPickupItem();
         if (this.pickup == net.minecraft.world.entity.projectile.arrow.AbstractArrow.Pickup.ALLOWED && !itemstack.isEmpty() && ((InventoryBridge) player.getInventory()).bridge$canHold(itemstack) > 0) {
@@ -69,7 +71,7 @@ public abstract class AbstractArrowMixin extends ProjectileMixin {
             }
             itemstack = item.getItem();
         }
-        this.pickupItemStack = itemstack;
+        this.setPickupItemStack(itemstack);
         var result = (boolean) DecorationOps.callsite().invoke(instance, player);
         if (result) {
             this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.PICKUP);

@@ -58,6 +58,7 @@ import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.storage.LevelStorageSource;
 import net.minecraft.world.level.storage.ServerLevelData;
 import net.minecraft.world.level.storage.WorldData;
+import net.minecrell.terminalconsole.TerminalConsoleAppender;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
@@ -69,6 +70,8 @@ import org.bukkit.event.server.ServerLoadEvent;
 import org.bukkit.event.world.WorldInitEvent;
 import org.bukkit.event.world.WorldLoadEvent;
 import org.bukkit.plugin.PluginLoadOrder;
+import org.jline.terminal.Terminal;
+import org.jline.terminal.TerminalBuilder;
 import org.objectweb.asm.Opcodes;
 import org.slf4j.Logger;
 import org.spigotmc.WatchdogThread;
@@ -78,9 +81,9 @@ import org.spongepowered.asm.mixin.Overwrite;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
 import java.lang.management.ManagementFactory;
 import java.net.Proxy;
@@ -104,9 +107,7 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
     @Shadow private Map<ResourceKey<Level>, ServerLevel> levels;
     @Shadow protected abstract void setupDebugLevel(WorldData p_240778_1_);
     @Shadow protected WorldData worldData;
-    @Shadow private static void setInitialSpawn(ServerLevel p_177897_, ServerLevelData p_177898_, boolean p_177899_, boolean p_177900_) { }
-    @Shadow public abstract boolean isSpawningMonsters();
-    @Shadow public abstract boolean isSpawningAnimals();
+    @Shadow private static void setInitialSpawn(ServerLevel p_177897_, ServerLevelData p_177898_, boolean p_177899_, boolean p_177900_, LevelLoadListener levelLoadListener) { }
     @Shadow @Final public Executor executor;
     @Shadow @Final private LevelLoadListener levelLoadListener;
     @Shadow protected abstract void waitUntilNextTick();
@@ -129,6 +130,9 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
     public OptionSet options;
     public ConsoleCommandSender console;
     public RemoteConsoleCommandSender remoteConsole;
+    /** CraftBukkit field; CraftServer.getTerminal() / ColouredConsoleSender read this. */
+    @TransformAccess(Opcodes.ACC_PUBLIC)
+    public Terminal terminal;
     public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<>();
     public int autosavePeriod;
     public Commands vanillaCommandDispatcher;
@@ -164,7 +168,21 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         }
         this.vanillaCommandDispatcher = worldStem.dataPackResources().getCommands();
         this.worldLoader = ArclightCaptures.getDataLoadContext();
+        this.terminal = arclight$initTerminal();
         ArclightServer.setMinecraftServer((MinecraftServer) (Object) this);
+    }
+
+    private static Terminal arclight$initTerminal() {
+        Terminal existing = TerminalConsoleAppender.getTerminal();
+        if (existing != null) {
+            return existing;
+        }
+        try {
+            return TerminalBuilder.builder().dumb(true).build();
+        } catch (Exception e) {
+            LOGGER.warn("Failed to initialize console terminal", e);
+            return null;
+        }
     }
 
     @Decorate(method = "runServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;buildServerStatus()Lnet/minecraft/network/protocol/status/ServerStatus;"))
@@ -177,8 +195,9 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         return serverStatus;
     }
 
-    @Decorate(method = "runServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;startMetricsRecordingTick()V"))
-    private void arclight$updateTickParam(MinecraftServer instance, @Local(allocate = "tickSection") long tickSection, @Local(allocate = "tickCount") long tickCount) throws Throwable {
+    // 26.1.2: runServer ticks via processPacketsAndTick(Z) (startMetricsRecordingTick / direct tickServer gone).
+    @Decorate(method = "runServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;processPacketsAndTick(Z)V"))
+    private void arclight$updateTickParam(MinecraftServer instance, boolean tick, @Local(allocate = "tickSection") long tickSection, @Local(allocate = "tickCount") long tickCount) throws Throwable {
         if (tickCount++ % SAMPLE_INTERVAL == 0) {
             long curTime = Util.getMillis();
             double currentTps = 1E3 / (curTime - tickSection) * SAMPLE_INTERVAL;
@@ -189,7 +208,7 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         }
         DecorationOps.blackhole().invoke(tickSection, tickCount);
         currentTick = (int) (System.currentTimeMillis() / 50);
-        DecorationOps.callsite().invoke(instance);
+        DecorationOps.callsite().invoke(instance, tick);
     }
 
     @Decorate(method = "runServer", at = @At(value = "INVOKE", remap = false, target = "Lorg/slf4j/Logger;warn(Ljava/lang/String;Ljava/lang/Object;Ljava/lang/Object;)V"))
@@ -245,7 +264,7 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
     }
 
     @Inject(method = "createLevels", at = @At("RETURN"))
-    public void arclight$enablePlugins(LevelLoadListener p_240787_1_, CallbackInfo ci) {
+    public void arclight$enablePlugins(CallbackInfo ci) {
         this.bridge$forge$unlockRegistries();
         this.server.enablePlugins(PluginLoadOrder.POSTWORLD);
         this.bridge$forge$lockRegistries();
@@ -270,13 +289,14 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         if (this.forceTicks) cir.setReturnValue(true);
     }
 
-    @Inject(method = "createLevels", at = @At(value = "NEW", ordinal = 0, target = "(Lnet/minecraft/server/MinecraftServer;Ljava/util/concurrent/Executor;Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/world/level/storage/ServerLevelData;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/world/level/dimension/LevelStem;Lnet/minecraft/server/level/progress/LevelLoadListener;ZJLjava/util/List;ZLnet/minecraft/world/RandomSequences;)Lnet/minecraft/server/level/ServerLevel;"))
-    private void arclight$registerEnv(LevelLoadListener p_240787_1_, CallbackInfo ci) {
+    // 26.1.2: ServerLevel ctor dropped LevelLoadListener + RandomSequences params.
+    @Inject(method = "createLevels", at = @At(value = "NEW", ordinal = 0, target = "(Lnet/minecraft/server/MinecraftServer;Ljava/util/concurrent/Executor;Lnet/minecraft/world/level/storage/LevelStorageSource$LevelStorageAccess;Lnet/minecraft/world/level/storage/ServerLevelData;Lnet/minecraft/resources/ResourceKey;Lnet/minecraft/world/level/dimension/LevelStem;ZJLjava/util/List;Z)Lnet/minecraft/server/level/ServerLevel;"))
+    private void arclight$registerEnv(CallbackInfo ci) {
         BukkitRegistry.registerEnvironments(this.registryAccess().lookupOrThrow(Registries.LEVEL_STEM));
     }
 
-    @Inject(method = "createLevels", at = @At(value = "INVOKE", remap = false, target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
-    private Object arclight$worldInit(Map<Object, Object> instance, Object k, Object v, LevelLoadListener chunkProgressListener) throws Throwable {
+    @Decorate(method = "createLevels", at = @At(value = "INVOKE", remap = false, target = "Ljava/util/Map;put(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;"))
+    private Object arclight$worldInit(Map<Object, Object> instance, Object k, Object v) throws Throwable {
         if (v instanceof ServerLevel level) {
             if (((CraftServer) Bukkit.getServer()).scoreboardManager == null) {
                 ((CraftServer) Bukkit.getServer()).scoreboardManager = new CraftScoreboardManager((MinecraftServer) (Object) this, level.getScoreboard());
@@ -319,6 +339,15 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         this.forceTicks = false;
     }
 
+    /**
+     * forceTicks makes haveTime() always true, so waitUntilNextTick's
+     * managedBlock(() -> !haveTime()) never exits. Spigot uses executeModerately instead.
+     */
+    @Redirect(method = "prepareLevels", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;waitUntilNextTick()V"))
+    private void arclight$prepareLevelsExecuteModerately(MinecraftServer instance) {
+        this.executeModerately();
+    }
+
     // bukkit methods
     public void initWorld(ServerLevel serverWorld, ServerLevelData worldInfo, WorldData saveData, WorldOptions worldOptions) {
         boolean flag = saveData.isDebugWorld();
@@ -342,7 +371,7 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
 
         if (!worldInfo.isInitialized()) {
             try {
-                setInitialSpawn(serverWorld, worldInfo, worldOptions.generateBonusChest(), flag);
+                setInitialSpawn(serverWorld, worldInfo, worldOptions.generateBonusChest(), flag, this.getLevelLoadListener());
                 worldInfo.setInitialized(true);
                 if (flag) {
                     this.setupDebugLevel(this.worldData);
@@ -378,7 +407,8 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         listener.start(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS, counter.totalChunks());
         while (counter.pendingChunks() > 0) {
             listener.update(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS, counter.readyChunks(), counter.totalChunks());
-            this.waitUntilNextTick();
+            // See arclight$prepareLevelsExecuteModerately: forceTicks + waitUntilNextTick deadlocks.
+            this.executeModerately();
         }
         listener.finish(LevelLoadListener.Stage.LOAD_INITIAL_CHUNKS);
 
@@ -422,9 +452,13 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         }
     }
 
-    @Inject(method = "saveAllChunks", cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;overworld()Lnet/minecraft/server/level/ServerLevel;"))
+    // 26.1.2: saveAllChunks no longer calls overworld(); it iterates getAllLevels().
+    // Skip empty-server saves; otherwise let vanilla run (old inject always cancelled at overworld()).
+    @Inject(method = "saveAllChunks", cancellable = true, at = @At("HEAD"))
     private void arclight$skipSave(boolean suppressLog, boolean flush, boolean forced, CallbackInfoReturnable<Boolean> cir) {
-        cir.setReturnValue(!this.levels.isEmpty());
+        if (this.levels.isEmpty()) {
+            cir.setReturnValue(false);
+        }
     }
 
     @Inject(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/storage/WorldData;setDataConfiguration(Lnet/minecraft/world/level/WorldDataConfiguration;)V"))

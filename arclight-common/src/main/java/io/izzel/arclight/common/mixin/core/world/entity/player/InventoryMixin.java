@@ -5,6 +5,7 @@ import io.izzel.arclight.common.bridge.core.world.entity.player.InventoryBridge;
 import io.izzel.arclight.common.bridge.core.world.IInventoryBridge;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.Container;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -24,11 +25,10 @@ import java.util.List;
 public abstract class InventoryMixin implements Container, IInventoryBridge, InventoryBridge {
 
     // @formatter:off
-    @Shadow @Final public NonNullList<ItemStack> items;
-    @Shadow @Final public NonNullList<ItemStack> offhand;
-    @Shadow @Final public NonNullList<ItemStack> armor;
-    @Shadow @Final private List<NonNullList<ItemStack>> compartments;
+    @Shadow @Final private NonNullList<ItemStack> items;
     @Shadow @Final public Player player;
+    @Shadow public abstract ItemStack getItem(int index);
+    @Shadow public abstract int getContainerSize();
     @Shadow protected abstract boolean hasRemainingSpaceForItem(ItemStack stack1, ItemStack stack2);
     // @formatter:on
 
@@ -46,7 +46,7 @@ public abstract class InventoryMixin implements Container, IInventoryBridge, Inv
             }
             if (remains <= 0) return stack.getCount();
         }
-        ItemStack offhandItemStack = this.getItem(this.items.size() + this.armor.size());
+        ItemStack offhandItemStack = this.getItem(Inventory.SLOT_OFFHAND);
         if (this.hasRemainingSpaceForItem(offhandItemStack, stack)) {
             remains -= (offhandItemStack.getMaxStackSize() < this.getMaxStackSize() ? offhandItemStack.getMaxStackSize() : this.getMaxStackSize()) - offhandItemStack.getCount();
         }
@@ -61,14 +61,19 @@ public abstract class InventoryMixin implements Container, IInventoryBridge, Inv
     }
 
     public List<ItemStack> getArmorContents() {
-        return this.armor;
+        List<ItemStack> armor = new ArrayList<>(4);
+        armor.add(this.getItem(EquipmentSlot.FEET.getIndex(Inventory.INVENTORY_SIZE)));
+        armor.add(this.getItem(EquipmentSlot.LEGS.getIndex(Inventory.INVENTORY_SIZE)));
+        armor.add(this.getItem(EquipmentSlot.CHEST.getIndex(Inventory.INVENTORY_SIZE)));
+        armor.add(this.getItem(EquipmentSlot.HEAD.getIndex(Inventory.INVENTORY_SIZE)));
+        return armor;
     }
 
     @Override
     public List<ItemStack> getContents() {
-        List<ItemStack> combined = new ArrayList<>(items.size() + offhand.size() + armor.size());
-        for (List<ItemStack> sub : this.compartments) {
-            combined.addAll(sub);
+        List<ItemStack> combined = new ArrayList<>(this.getContainerSize());
+        for (int i = 0; i < this.getContainerSize(); ++i) {
+            combined.add(this.getItem(i));
         }
         return combined;
     }

@@ -1,7 +1,7 @@
 package io.izzel.arclight.common.mixin.core.world.entity.monster;
 
-import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.LivingEntityBridge;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.monster.spider.CaveSpider;
 import org.bukkit.event.entity.EntityPotionEffectEvent;
@@ -13,8 +13,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(CaveSpider.class)
 public abstract class CaveSpiderMixin extends SpiderMixin {
 
+    // 26.1: doHurtTarget takes ServerLevel first.
     @Inject(method = "doHurtTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;addEffect(Lnet/minecraft/world/effect/MobEffectInstance;Lnet/minecraft/world/entity/Entity;)Z"))
-    private void arclight$potionAttack(Entity entityIn, CallbackInfoReturnable<Boolean> cir) {
+    private void arclight$potionAttack(ServerLevel level, Entity entityIn, CallbackInfoReturnable<Boolean> cir) {
         ((LivingEntityBridge) entityIn).bridge$pushEffectCause(EntityPotionEffectEvent.Cause.ATTACK);
     }
 }

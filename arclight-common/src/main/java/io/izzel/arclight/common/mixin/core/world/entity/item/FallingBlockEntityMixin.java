@@ -3,10 +3,11 @@ package io.izzel.arclight.common.mixin.core.world.entity.item;
 import io.izzel.arclight.common.bridge.core.world.level.WorldBridge;
 import io.izzel.arclight.common.mixin.core.world.entity.EntityMixin;
 import io.izzel.arclight.common.mod.mixins.annotation.TransformAccess;
+import io.izzel.arclight.mixin.Decorate;
+import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.item.FallingBlockEntity;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.state.BlockState;
 import org.bukkit.craftbukkit.event.CraftEventFactory;
 import org.bukkit.event.entity.CreatureSpawnEvent;
@@ -58,13 +59,15 @@ public abstract class FallingBlockEntityMixin extends EntityMixin {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DROP);
     }
 
-    @Inject(method = "tick", cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z"))
-    private void arclight$entityChangeBlock(CallbackInfo ci, Block block, BlockPos pos) {
+    // 26.1: avoid LocalCapture — Block local no longer present before setBlock.
+    @Decorate(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z"))
+    private boolean arclight$entityChangeBlock(Level level, BlockPos pos, BlockState state, int flags) throws Throwable {
         if (!CraftEventFactory.callEntityChangeBlockEvent((FallingBlockEntity) (Object) this, pos, this.blockState)) {
             this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DESPAWN);
             this.discard();
-            ci.cancel();
+            return (boolean) DecorationOps.cancel().invoke();
         }
+        return (boolean) DecorationOps.callsite().invoke(level, pos, state, flags);
     }
 
     @Inject(method = "fall", cancellable = true, locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z"))

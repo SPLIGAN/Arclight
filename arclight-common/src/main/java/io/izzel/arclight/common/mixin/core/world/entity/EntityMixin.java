@@ -111,7 +111,8 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow public abstract Pose getPose();
     @Shadow public abstract String getScoreboardName();
     @Shadow public abstract boolean fireImmune();
-    @Shadow public boolean hurt(DamageSource source, float amount) { return false; }
+    @Shadow public void hurt(DamageSource source, float amount) {}
+    @Shadow public boolean hurtServer(ServerLevel level, DamageSource source, float amount) { return false; }
     @Shadow public boolean horizontalCollision;
     @Shadow protected abstract Vec3 collide(Vec3 vec);
     @Shadow public int tickCount;
@@ -121,18 +122,19 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow public abstract void unRide();
     @Shadow @Final protected SynchedEntityData entityData;
     @Shadow @Final private static EntityDataAccessor<Integer> DATA_AIR_SUPPLY_ID;
-    @Shadow @Nullable public abstract MinecraftServer getServer();
+    // 26.1.2: Entity.getServer() removed; use Level#getServer() / ServerLevel#getServer() instead.
     @Shadow public abstract Vec3 getDeltaMovement();
     @Shadow public abstract EntityType<?> getType();
     @Shadow @Final public RandomSource random;
     @Shadow public abstract float getBbWidth();
     @Shadow public abstract float getBbHeight();
     @Shadow public abstract boolean isInvisible();
-    @Shadow public abstract boolean isInvulnerableTo(DamageSource source);
+    // 26.1.2: isInvulnerableTo(ServerLevel, DamageSource) lives on LivingEntity, not Entity.
+    @Shadow public abstract boolean isInvulnerableToBase(DamageSource source);
     @Shadow public int invulnerableTime;
     @Shadow public abstract void playSound(SoundEvent soundIn, float volume, float pitch);
     @Shadow public abstract void teleportTo(double x, double y, double z);
-    @Shadow @Nullable public abstract ItemEntity spawnAtLocation(ItemStack stack);
+    @Shadow @Nullable public abstract ItemEntity spawnAtLocation(ServerLevel level, ItemStack stack);
     @Shadow public abstract SynchedEntityData getEntityData();
     @Shadow public void tick() {}
     @Shadow public abstract AABB getBoundingBox();
@@ -140,10 +142,9 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow public boolean onGround;
     @Shadow public abstract boolean isInWater();
     @Shadow public abstract boolean isPassenger();
-    @Shadow public float fallDistance;
+    @Shadow public double fallDistance;
     @Shadow public abstract boolean isSprinting();
-    @Shadow public float walkDist;
-    @Shadow public float walkDistO;
+    @Shadow public float moveDist;
     @Shadow public abstract boolean isAlliedTo(Entity entityIn);
     @Shadow public abstract void setDeltaMovement(Vec3 motionIn);
     @Shadow public abstract double distanceToSqr(Entity entityIn);
@@ -157,7 +158,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow public double yo;
     @Shadow public double zo;
     @Shadow public abstract boolean isNoGravity();
-    @Shadow protected abstract void checkInsideBlocks();
+    @Shadow public abstract void snapTo(double x, double y, double z, float yaw, float pitch);
     @Shadow public float yRotO;
     @Shadow public abstract boolean isVehicle();
     @Shadow public abstract boolean hasPassenger(Entity entityIn);
@@ -167,7 +168,6 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow @Nullable public abstract PlayerTeam getTeam();
     @Shadow public abstract void clearFire();
     @Shadow public abstract void setSharedFlag(int flag, boolean set);
-    @Shadow public abstract void moveTo(double x, double y, double z, float yaw, float pitch);
     @Shadow public abstract int getId();
     @Shadow @Nullable public abstract Component getCustomName();
     @Shadow public abstract boolean isPassengerOfSameVehicle(Entity entityIn);
@@ -181,7 +181,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow protected abstract void removeAfterChangingDimensions();
     @Shadow public abstract Vec3 getRelativePortalPosition(Direction.Axis axis, BlockUtil.FoundRectangle result);
     @Shadow public abstract EntityDimensions getDimensions(Pose poseIn);
-    @Shadow protected abstract boolean updateInWaterStateAndDoFluidPushing();
+    @Shadow protected abstract boolean updateFluidInteraction();
     @Shadow public abstract boolean isInLava();
     @Shadow public abstract void lavaHurt();
     @Shadow protected boolean firstTick;
@@ -203,7 +203,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow public abstract boolean isShiftKeyDown();
     @Shadow public abstract DamageSources damageSources();
     @Shadow @Nullable public abstract Entity getFirstPassenger();
-    @Shadow public abstract boolean teleportTo(ServerLevel p_265257_, double p_265407_, double p_265727_, double p_265410_, Set<Relative> p_265083_, float p_265573_, float p_265094_);
+    @Shadow public abstract boolean teleportTo(ServerLevel p_265257_, double p_265407_, double p_265727_, double p_265410_, Set<Relative> p_265083_, float p_265573_, float p_265094_, boolean p_365974_);
     @Shadow public abstract boolean isSpectator();
     @Shadow public abstract SoundSource getSoundSource();
     @Shadow public abstract int getPortalCooldown();
@@ -221,7 +221,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @Shadow protected abstract void applyGravity();
     @Shadow public abstract void igniteForSeconds(float f);
     @Shadow public abstract boolean onGround();
-    @Shadow @org.jetbrains.annotations.Nullable public abstract ItemEntity spawnAtLocation(ItemStack itemStack, float f);
+    @Shadow @org.jetbrains.annotations.Nullable public abstract ItemEntity spawnAtLocation(ServerLevel level, ItemStack itemStack, float f);
     // @formatter:on
     private static final int CURRENT_LEVEL = 2;
     public boolean forceDrops;
@@ -518,7 +518,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         return ret;
     }
 
-    @Decorate(method = "lavaHurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"))
+    @Decorate(method = "lavaIgnite", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;igniteForSeconds(F)V"))
     public void arclight$setOnFireFromLava$bukkitEvent(Entity instance, float f) throws Throwable {
         if ((Object) this instanceof LivingEntity && remainingFireTicks <= 0) {
             var damager = (lastLavaContact == null) ? null : CraftBlock.at(level(), lastLavaContact);
@@ -558,19 +558,18 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         setSecondsOnFire(tick, callEvent);
     }
 
-    @ModifyArg(method = "move", index = 1, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/Block;stepOn(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/Entity;)V"))
+    @ModifyArg(method = "applyEffectsFromBlocks(Ljava/util/List;)V", index = 1, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/Block;stepOn(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/Entity;)V"))
     private BlockPos arclight$captureBlockWalk(BlockPos pos) {
         ArclightCaptures.captureDamageEventBlock(pos);
         return pos;
     }
 
-    @Inject(method = "move", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/world/level/block/Block;stepOn(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/Entity;)V"))
-    private void arclight$resetBlockWalk(MoverType typeIn, Vec3 pos, CallbackInfo ci) {
+    @Inject(method = "applyEffectsFromBlocks(Ljava/util/List;)V", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/world/level/block/Block;stepOn(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/world/entity/Entity;)V"))
+    private void arclight$resetBlockWalk(java.util.List<?> movements, CallbackInfo ci) {
         ArclightCaptures.captureDamageEventBlock(null);
     }
 
-    @Inject(method = "move", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;onGround()Z"),
-        slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/Block;updateEntityAfterFallOn(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/world/entity/Entity;)V")))
+    @Inject(method = "move", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/world/level/block/Block;updateEntityMovementAfterFallOn(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/world/entity/Entity;)V"))
     private void arclight$move$blockCollide(MoverType typeIn, Vec3 pos, CallbackInfo ci) {
         if (horizontalCollision && ((EntityBridge) this).bridge$getBukkitEntity() instanceof Vehicle vehicle) {
             org.bukkit.block.Block block = ((WorldBridge) this.level()).bridge$getWorld().getBlockAt(Mth.floor(this.getX()), Mth.floor(this.getY()), Mth.floor(this.getZ()));
@@ -592,7 +591,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         }
     }
 
-    @Inject(method = "absMoveTo(DDDFF)V", at = @At("RETURN"))
+    @Inject(method = "absSnapTo(DDDFF)V", at = @At("RETURN"))
     private void arclight$loadChunk(double x, double y, double z, float yaw, float pitch, CallbackInfo ci) {
         if (this.valid)
             this.level().getChunk((int) Math.floor(this.getX()) >> 4, (int) Math.floor(this.getZ()) >> 4);
@@ -727,16 +726,19 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     @SuppressWarnings("JavadocReference")
     @Override
     public ItemEntity arclight$spawnAtLocationNoAdd(ItemStack stack, float yOffset) {
+        if (!(this.level() instanceof ServerLevel serverLevel)) {
+            return null;
+        }
         try {
             arclight$spawnNoAdd = true;
-            return spawnAtLocation(stack, yOffset);
+            return spawnAtLocation(serverLevel, stack, yOffset);
         } finally {
             arclight$spawnNoAdd = false;
         }
     }
 
-    @Decorate(method = "spawnAtLocation(Lnet/minecraft/world/item/ItemStack;F)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
-    private boolean arclight$spawnNoAdd(Level instance, Entity entity) throws Throwable {
+    @Decorate(method = "spawnAtLocation(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    private boolean arclight$spawnNoAdd(ServerLevel instance, Entity entity) throws Throwable {
         if (arclight$spawnNoAdd) {
             return true;
         }
@@ -748,8 +750,8 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         return (boolean) DecorationOps.callsite().invoke(instance, entity);
     }
 
-    @Inject(method = "interact", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Leashable;dropLeash(ZZ)V"))
-    private void arclight$unleashEvent(Player player, InteractionHand interactionHand, CallbackInfoReturnable<InteractionResult> cir) {
+    @Inject(method = "interact", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;shearOffAllLeashConnections(Lnet/minecraft/world/entity/player/Player;)Z"))
+    private void arclight$unleashEvent(Player player, InteractionHand interactionHand, Vec3 location, CallbackInfoReturnable<InteractionResult> cir) {
         if (CraftEventFactory.callPlayerUnleashEntityEvent((Entity) (Object) this, player, interactionHand).isCancelled()) {
             ((ServerPlayer) player).connection.send(new ClientboundSetEntityLinkPacket((Entity) (Object) this, ((Leashable) this).getLeashHolder()));
             cir.setReturnValue(InteractionResult.PASS);
@@ -757,7 +759,7 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     }
 
     @Inject(method = "interact", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Leashable;setLeashedTo(Lnet/minecraft/world/entity/Entity;Z)V"))
-    private void arclight$leashEvent(Player player, InteractionHand interactionHand, CallbackInfoReturnable<InteractionResult> cir) {
+    private void arclight$leashEvent(Player player, InteractionHand interactionHand, Vec3 location, CallbackInfoReturnable<InteractionResult> cir) {
         if (CraftEventFactory.callPlayerLeashEntityEvent((Entity) (Object) this, player, player, interactionHand).isCancelled()) {
             ((ServerPlayerBridge) player).bridge$resendItemInHands(); // SPIGOT-7615: Resend to fix client desync with used item
             ((ServerPlayer) player).connection.send(new ClientboundSetEntityLinkPacket((Entity) (Object) this, ((Leashable) this).getLeashHolder()));
@@ -765,8 +767,8 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         }
     }
 
-    @Inject(method = "startRiding(Lnet/minecraft/world/entity/Entity;Z)Z", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;isPassenger()Z"))
-    private void arclight$startRiding(Entity entity, boolean bl, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "startRiding(Lnet/minecraft/world/entity/Entity;ZZ)Z", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;isPassenger()Z"))
+    private void arclight$startRiding(Entity entity, boolean force, boolean sendEventAndTriggers, CallbackInfoReturnable<Boolean> cir) {
         if (((EntityBridge) entity).bridge$getBukkitEntity() instanceof Vehicle v && this.getBukkitEntity() instanceof org.bukkit.entity.LivingEntity) {
             VehicleEnterEvent event = new VehicleEnterEvent(v, this.getBukkitEntity());
             if (this.valid) {
@@ -836,9 +838,11 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         return passengers;
     }
 
-    @Decorate(method = "handlePortal", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;canChangeDimensions(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/Level;)Z"))
-    private boolean arclight$changeDimension(Entity instance, Level level, Level level2) throws Throwable {
-        return (boolean) DecorationOps.callsite().invoke(instance, level, level2) || this instanceof ServerPlayerBridge;
+    @Inject(method = "canTeleport", at = @At("RETURN"), cancellable = true)
+    private void arclight$allowPlayerTeleport(Level from, Level to, CallbackInfoReturnable<Boolean> cir) {
+        if (!cir.getReturnValueZ() && this instanceof ServerPlayerBridge) {
+            cir.setReturnValue(true);
+        }
     }
 
     @Inject(method = "setSwimming", cancellable = true, at = @At(value = "HEAD"))
@@ -884,8 +888,9 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
         // CraftBukkit end
     }
 
-    @Decorate(method = "thunderHit", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)Z"))
-    private boolean arclight$onStruckByLightning$EntityCombustByEntityEvent1(Entity entity, DamageSource source, float amount) throws Throwable {
+    // 26.1.2: Entity.hurt(DamageSource, float) is void and delegates to hurtServer.
+    @Decorate(method = "thunderHit", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Entity;hurt(Lnet/minecraft/world/damagesource/DamageSource;F)V"))
+    private void arclight$onStruckByLightning$EntityCombustByEntityEvent1(Entity entity, DamageSource source, float amount) throws Throwable {
         final org.bukkit.entity.Entity thisBukkitEntity = this.getBukkitEntity();
         final org.bukkit.entity.Entity stormBukkitEntity = ((EntityBridge) entity).bridge$getBukkitEntity();
         final PluginManager pluginManager = Bukkit.getPluginManager();
@@ -894,14 +899,14 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
             pluginManager.callEvent(hangingEvent);
 
             if (hangingEvent.isCancelled()) {
-                return false;
+                return;
             }
         }
 
         if (this.fireImmune()) {
-            return false;
+            return;
         }
-        return (boolean) DecorationOps.callsite().invoke(entity, ((DamageSourceBridge) source).bridge$customCausingEntity(entity), amount);
+        DecorationOps.callsite().invoke(entity, ((DamageSourceBridge) source).bridge$customCausingEntity(entity), amount);
     }
 
     @Override
@@ -915,10 +920,10 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
     }
 
     public boolean teleportTo(ServerLevel worldserver, double d0, double d1, double d2, Set<Relative> set, float f, float f1, org.bukkit.event.player.PlayerTeleportEvent.TeleportCause cause) {
-        return this.teleportTo(worldserver, d0, d1, d2, set, f, f1);
+        return this.teleportTo(worldserver, d0, d1, d2, set, f, f1, true);
     }
 
-    @Decorate(method = "changeDimension", inject = true, at = @At("HEAD"))
+    @Decorate(method = "teleport(Lnet/minecraft/world/level/portal/TeleportTransition;)Lnet/minecraft/world/entity/Entity;", inject = true, at = @At("HEAD"))
     private void arclight$changeDim(TeleportTransition dimensionTransition) throws Throwable {
         if (this.level() instanceof ServerLevel && !this.isRemoved()) {
             Location to = new Location(((WorldBridge) dimensionTransition.newLevel()).bridge$getWorld(), dimensionTransition.position().x, dimensionTransition.position().y, dimensionTransition.position().z, dimensionTransition.yRot(), dimensionTransition.xRot());
@@ -931,26 +936,22 @@ public abstract class EntityMixin implements InternalEntityBridge, EntityBridge,
             var cause = ((TeleportTransitionBridge) (Object) dimensionTransition).bridge$getTeleportCause();
             dimensionTransition = ArclightTeleportHelper.withLocation(dimensionTransition, ((CraftWorld) to.getWorld()).getHandle(), CraftLocation.toVec3D(to), to.getYaw(), to.getPitch());
             ((TeleportTransitionBridge) (Object) dimensionTransition).bridge$setTeleportCause(cause);
+            DecorationOps.blackhole().invoke(dimensionTransition);
+            return;
         }
+        DecorationOps.blackhole().invoke(dimensionTransition);
     }
 
-    @Decorate(method = "changeDimension", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addDuringTeleport(Lnet/minecraft/world/entity/Entity;)V"))
+    @Decorate(method = "teleportCrossDimension", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addDuringTeleport(Lnet/minecraft/world/entity/Entity;)V"))
     private void arclight$skipTeleportIfNotInWorld(ServerLevel instance, Entity entity) throws Throwable {
         if (this.inWorld) {
             DecorationOps.callsite().invoke(instance, entity);
         }
     }
 
-    @Inject(method = "removeAfterChangingDimensions", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Leashable;dropLeash(ZZ)V"))
+    @Inject(method = "removeAfterChangingDimensions", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Leashable;removeLeash()V"))
     private void arclight$dropLeashChangeDim(CallbackInfo ci) {
         Bukkit.getPluginManager().callEvent(new EntityUnleashEvent(this.getBukkitEntity(), EntityUnleashEvent.UnleashReason.UNKNOWN));
-    }
-
-    @Decorate(method = "teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDLjava/util/Set;FF)Z", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addDuringTeleport(Lnet/minecraft/world/entity/Entity;)V"))
-    private void arclight$skipIfNotInWorld(ServerLevel instance, Entity entity) throws Throwable {
-        if (this.inWorld) {
-            DecorationOps.callsite().invoke(instance, entity);
-        }
     }
 
     @Inject(method = "restoreFrom", at = @At("HEAD"))

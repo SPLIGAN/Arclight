@@ -46,13 +46,13 @@ public abstract class Fox_BreedGoalMixin extends BreedGoal {
             ServerPlayer serverplayerentity1 = this.partner.getLoveCause();
             ServerPlayer serverplayerentity2 = serverplayerentity;
             if (serverplayerentity != null) {
-                ((FoxBridge) foxentity).bridge$addTrustedUUID(serverplayerentity.getUUID());
+                ((FoxBridge) foxentity).bridge$addTrustedEntity(serverplayerentity);
             } else {
                 serverplayerentity2 = serverplayerentity1;
             }
 
             if (serverplayerentity1 != null && serverplayerentity != serverplayerentity1) {
-                ((FoxBridge) foxentity).bridge$addTrustedUUID(serverplayerentity1.getUUID());
+                ((FoxBridge) foxentity).bridge$addTrustedEntity(serverplayerentity1);
             }
             int experience = this.animal.getRandom().nextInt(7) + 1;
             final EntityBreedEvent entityBreedEvent = CraftEventFactory.callEntityBreedEvent(foxentity, this.animal, this.partner, serverplayerentity, ((AnimalBridge) this.animal).bridge$getBreedItem(), experience);

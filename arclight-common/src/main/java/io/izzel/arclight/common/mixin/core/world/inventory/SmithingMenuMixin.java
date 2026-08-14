@@ -22,7 +22,8 @@ public abstract class SmithingMenuMixin extends ItemCombinerMenuMixin {
 
     private CraftInventoryView<SmithingMenu, ?> bukkitEntity;
 
-    @Decorate(method = "createResult", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/ResultContainer;setItem(ILnet/minecraft/world/item/ItemStack;)V"))
+    // 26.1: result setItem moved into createResult lambdas.
+    @Decorate(method = {"lambda$createResult$0", "lambda$createResult$1"}, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/inventory/ResultContainer;setItem(ILnet/minecraft/world/item/ItemStack;)V"))
     private void arclight$prepareSmithing(ResultContainer craftResultInventory, int index, ItemStack stack) throws Throwable {
         final CraftInventoryView<SmithingMenu, ?> craft = getBukkitView();
         if (craft instanceof ArclightSmithingView) {

@@ -89,10 +89,10 @@ public abstract class CreeperMixin extends PathfinderMobMixin implements Creeper
         DecorationOps.callsite().invoke(instance, value);
     }
 
-    // Use Redirect to preserve injection point
-    @Redirect(method = "explodeCreeper", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;explode(Lnet/minecraft/world/entity/Entity;DDDFLnet/minecraft/world/level/Level$ExplosionInteraction;)V"))
-    private void arclight$redirectExplode(Level instance, Entity arg, double d, double e, double f, float g, Level.ExplosionInteraction arg2) {
-        this.level().explode((Creeper) (Object) this,
+    // 26.1: explode is invoked on ServerLevel.
+    @Redirect(method = "explodeCreeper", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;explode(Lnet/minecraft/world/entity/Entity;DDDFLnet/minecraft/world/level/Level$ExplosionInteraction;)V"))
+    private void arclight$redirectExplode(ServerLevel instance, Entity arg, double d, double e, double f, float g, Level.ExplosionInteraction arg2) {
+        instance.explode((Creeper) (Object) this,
                 ((DamageSourceBridge) Explosion.getDefaultDamageSource(level(), (Creeper) (Object) this)).bridge$customCausingEntityDamager(entityIgniter), null,
                 this.getX(), this.getY(), this.getZ(), eventRadius, eventFire, Level.ExplosionInteraction.MOB);
     }

@@ -29,7 +29,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class TntBlockMixin extends BlockMixin {
 
     // @formatter:off
-    @Shadow private static void explode(Level arg, BlockPos arg2, @Nullable LivingEntity arg3) {}
+    // 26.1: explode renamed to prime.
+    @Shadow private static boolean prime(Level arg, BlockPos arg2, @Nullable LivingEntity arg3) { return false; }
     // @formatter:on
 
     @Redirect(method = "onPlace", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;hasNeighborSignal(Lnet/minecraft/core/BlockPos;)Z"))
@@ -38,12 +39,12 @@ public abstract class TntBlockMixin extends BlockMixin {
     }
 
     @Redirect(method = "neighborChanged", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;hasNeighborSignal(Lnet/minecraft/core/BlockPos;)Z"))
-    private boolean arclight$redstone2(Level instance, BlockPos pos, BlockState p_57457_, Level p_57458_, BlockPos p_57459_, Block p_57460_, BlockPos source) {
-        return instance.hasNeighborSignal(pos) && CraftEventFactory.callTNTPrimeEvent(instance, pos, TNTPrimeEvent.PrimeCause.REDSTONE, null, source);
+    private boolean arclight$redstone2(Level instance, BlockPos pos, BlockState p_57457_, Level p_57458_, BlockPos p_57459_, Block p_57460_, net.minecraft.world.level.redstone.Orientation orientation) {
+        return instance.hasNeighborSignal(pos) && CraftEventFactory.callTNTPrimeEvent(instance, pos, TNTPrimeEvent.PrimeCause.REDSTONE, null, null);
     }
 
     @Override
     public void bridge$forge$onCaughtFire(BlockState state, Level level, BlockPos pos, @Nullable Direction direction, @Nullable LivingEntity igniter) {
-        explode(level, pos, igniter);
+        prime(level, pos, igniter);
     }
 }

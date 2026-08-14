@@ -1,11 +1,12 @@
 package io.izzel.arclight.common.mixin.core.world.entity.projectile;
 
-import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.bridge.core.world.entity.LivingEntityBridge;
 import io.izzel.arclight.common.mixin.core.world.entity.EntityMixin;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntityReference;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.projectile.ShulkerBullet;
 import net.minecraft.world.level.Level;
@@ -27,9 +28,10 @@ import javax.annotation.Nullable;
 public abstract class ShulkerBulletMixin extends EntityMixin {
 
     // @formatter:off
-    @Shadow private Entity finalTarget;
+    // 26.1: finalTarget is EntityReference; selectNextMoveDirection also takes the Entity.
+    @Shadow private EntityReference<Entity> finalTarget;
     @Shadow @Nullable private Direction currentMoveDirection;
-    @Shadow protected abstract void selectNextMoveDirection(@Nullable Direction.Axis p_184569_1_);
+    @Shadow protected abstract void selectNextMoveDirection(@Nullable Direction.Axis axis, @Nullable Entity entity);
     // @formatter:on
 
     @Inject(method = "<init>(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/Entity;Lnet/minecraft/core/Direction$Axis;)V", at = @At("RETURN"))
@@ -52,25 +54,25 @@ public abstract class ShulkerBulletMixin extends EntityMixin {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DESPAWN);
     }
 
-    @Inject(method = "hurt", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/ShulkerBullet;destroy()V"))
-    private void arclight$dead(DamageSource damageSource, float f, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "hurtServer", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/projectile/ShulkerBullet;destroy()V"))
+    private void arclight$dead(ServerLevel level, DamageSource damageSource, float f, CallbackInfoReturnable<Boolean> cir) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.DEATH);
     }
 
-    @Inject(method = "hurt", cancellable = true, at = @At("HEAD"))
-    private void arclight$damageBullet(DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "hurtServer", cancellable = true, at = @At("HEAD"))
+    private void arclight$damageBullet(ServerLevel level, DamageSource source, float amount, CallbackInfoReturnable<Boolean> cir) {
         if (CraftEventFactory.handleNonLivingEntityDamageEvent((ShulkerBullet) (Object) this, source, amount, false)) {
             cir.setReturnValue(false);
         }
     }
 
     public Entity getTarget() {
-        return this.finalTarget;
+        return EntityReference.getEntity(this.finalTarget, this.level());
     }
 
     public void setTarget(final Entity e) {
-        this.finalTarget = e;
+        this.finalTarget = e == null ? null : EntityReference.of(e);
         this.currentMoveDirection = Direction.UP;
-        this.selectNextMoveDirection(Direction.Axis.X);
+        this.selectNextMoveDirection(Direction.Axis.X, e);
     }
 }

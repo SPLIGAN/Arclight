@@ -29,7 +29,6 @@ public class RaidMixin implements RaidBridge {
 
     // @formatter:off
     @Shadow @Final private Map<Integer, Set<Raider>> groupRaiderMap;
-    @Shadow @Final private ServerLevel level;
     // @formatter:on
 
     private transient Raider arclight$leader;
@@ -41,9 +40,9 @@ public class RaidMixin implements RaidBridge {
         arclight$leader = entity;
     }
 
-    @Decorate(method = "spawnGroup", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/raid/Raid;joinRaid(ILnet/minecraft/world/entity/raid/Raider;Lnet/minecraft/core/BlockPos;Z)V"))
-    public void arclight$captureRaider(Raid raid, int wave, Raider entity, BlockPos pos, boolean flag) throws Throwable {
-        DecorationOps.callsite().invoke(raid, wave, entity, pos, flag);
+    @Decorate(method = "spawnGroup", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/raid/Raid;joinRaid(Lnet/minecraft/server/level/ServerLevel;ILnet/minecraft/world/entity/raid/Raider;Lnet/minecraft/core/BlockPos;Z)V"))
+    public void arclight$captureRaider(Raid raid, ServerLevel level, int wave, Raider entity, BlockPos pos, boolean flag) throws Throwable {
+        DecorationOps.callsite().invoke(raid, level, wave, entity, pos, flag);
         if (arclight$raiders == null) {
             arclight$raiders = new ArrayList<>();
         }
@@ -51,15 +50,15 @@ public class RaidMixin implements RaidBridge {
     }
 
     @Inject(method = "spawnGroup", at = @At("RETURN"))
-    public void arclight$spawnWave(BlockPos pos, CallbackInfo ci) {
-        CraftEventFactory.callRaidSpawnWaveEvent((Raid) (Object) this, this.level, arclight$leader, arclight$raiders);
+    public void arclight$spawnWave(ServerLevel level, BlockPos pos, CallbackInfo ci) {
+        CraftEventFactory.callRaidSpawnWaveEvent((Raid) (Object) this, level, arclight$leader, arclight$raiders);
         arclight$leader = null;
         arclight$raiders = null;
     }
 
-    @Inject(method = "joinRaid(ILnet/minecraft/world/entity/raid/Raider;Lnet/minecraft/core/BlockPos;Z)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntityWithPassengers(Lnet/minecraft/world/entity/Entity;)V"))
-    public void arclight$addEntity(int wave, Raider raider, BlockPos pos, boolean flag, CallbackInfo ci) {
-        ((WorldBridge) this.level).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.RAID);
+    @Inject(method = "joinRaid(Lnet/minecraft/server/level/ServerLevel;ILnet/minecraft/world/entity/raid/Raider;Lnet/minecraft/core/BlockPos;Z)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntityWithPassengers(Lnet/minecraft/world/entity/Entity;)V"))
+    public void arclight$addEntity(ServerLevel level, int wave, Raider raider, BlockPos pos, boolean flag, CallbackInfo ci) {
+        ((WorldBridge) level).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.RAID);
     }
 
     public Collection<Raider> getRaiders() {

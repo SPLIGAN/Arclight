@@ -25,8 +25,9 @@ public class SkeletonTrapGoalMixin {
     @Shadow @Final private SkeletonHorse horse;
     // @formatter:on
 
+    // 26.1: SkeletonTrapGoal / AbstractHorse under animal.equine.
     @Inject(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntityWithPassengers(Lnet/minecraft/world/entity/Entity;)V"),
-        slice = @Slice(to = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/horse/SkeletonTrapGoal;createHorse(Lnet/minecraft/world/DifficultyInstance;)Lnet/minecraft/world/entity/animal/horse/AbstractHorse;")))
+        slice = @Slice(to = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/equine/SkeletonTrapGoal;createHorse(Lnet/minecraft/world/DifficultyInstance;)Lnet/minecraft/world/entity/animal/equine/AbstractHorse;")))
     private void arclight$thunder(CallbackInfo ci) {
         ((WorldBridge) this.horse.level()).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.TRAP);
     }
@@ -38,7 +39,7 @@ public class SkeletonTrapGoalMixin {
     }
 
     @Inject(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntityWithPassengers(Lnet/minecraft/world/entity/Entity;)V"),
-        slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/horse/SkeletonTrapGoal;createHorse(Lnet/minecraft/world/DifficultyInstance;)Lnet/minecraft/world/entity/animal/horse/AbstractHorse;")))
+        slice = @Slice(from = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/equine/SkeletonTrapGoal;createHorse(Lnet/minecraft/world/DifficultyInstance;)Lnet/minecraft/world/entity/animal/equine/AbstractHorse;")))
     private void arclight$jockey(CallbackInfo ci) {
         ((WorldBridge) this.horse.level()).bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.JOCKEY);
     }

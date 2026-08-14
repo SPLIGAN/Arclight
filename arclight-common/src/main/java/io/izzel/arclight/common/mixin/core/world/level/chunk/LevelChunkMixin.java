@@ -4,6 +4,8 @@ import io.izzel.arclight.common.bridge.core.world.level.LevelAccessorBridge;
 import io.izzel.arclight.common.bridge.core.world.level.WorldBridge;
 import io.izzel.arclight.common.bridge.core.world.chunk.ChunkAccessBridge;
 import io.izzel.arclight.common.bridge.core.world.level.chunk.LevelChunkBridge;
+import io.izzel.arclight.mixin.Decorate;
+import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
@@ -27,7 +29,6 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nullable;
@@ -36,13 +37,13 @@ import javax.annotation.Nullable;
 public abstract class LevelChunkMixin extends ChunkAccessMixin implements LevelChunkBridge {
 
     // @formatter:off
-    @Shadow @Nullable public abstract BlockState setBlockState(BlockPos pos, BlockState state, boolean isMoving);
+    @Shadow @Nullable public abstract BlockState setBlockState(BlockPos pos, BlockState state, int flags);
     @Shadow @Final public Level level;
     // @formatter:on
 
     public boolean mustNotSave;
     public boolean needsDecoration;
-    private transient boolean arclight$doPlace;
+    private transient boolean arclight$doPlace = true;
     public ServerLevel r; // TODO f_62776_ check on update
 
     @Inject(method = "<init>(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/ChunkPos;Lnet/minecraft/world/level/chunk/UpgradeData;Lnet/minecraft/world/ticks/LevelChunkTicks;Lnet/minecraft/world/ticks/LevelChunkTicks;J[Lnet/minecraft/world/level/chunk/LevelChunkSection;Lnet/minecraft/world/level/chunk/LevelChunk$PostLoadProcessor;Lnet/minecraft/world/level/levelgen/blending/BlendingData;)V", at = @At("RETURN"))
@@ -66,7 +67,7 @@ public abstract class LevelChunkMixin extends ChunkAccessMixin implements LevelC
     }
 
     public org.bukkit.Chunk getBukkitChunk() {
-        return new CraftChunk((LevelChunk) (Object) this);
+        return new CraftChunk((ServerLevel) this.level, this.chunkPos.x(), this.chunkPos.z());
     }
 
     @Override
@@ -82,7 +83,8 @@ public abstract class LevelChunkMixin extends ChunkAccessMixin implements LevelC
     public BlockState setBlockState(BlockPos pos, BlockState state, boolean isMoving, boolean doPlace) {
         this.arclight$doPlace = doPlace;
         try {
-            return this.setBlockState(pos, state, isMoving);
+            int flags = isMoving ? Block.UPDATE_MOVE_BY_PISTON : 0;
+            return this.setBlockState(pos, state, flags);
         } finally {
             this.arclight$doPlace = true;
         }
@@ -127,7 +129,7 @@ public abstract class LevelChunkMixin extends ChunkAccessMixin implements LevelC
              * no way of creating a CraftWorld/CraftServer at that point.
              */
 
-            var bukkitChunk = new CraftChunk((LevelChunk) (Object) this);
+            var bukkitChunk = new CraftChunk((ServerLevel) this.level, this.chunkPos.x(), this.chunkPos.z());
             server.getPluginManager().callEvent(new ChunkLoadEvent(bukkitChunk, this.needsDecoration));
 
             if (this.needsDecoration) {
@@ -156,17 +158,21 @@ public abstract class LevelChunkMixin extends ChunkAccessMixin implements LevelC
 
     public void unloadCallback() {
         org.bukkit.Server server = Bukkit.getServer();
-        var bukkitChunk = new CraftChunk((LevelChunk) (Object) this);
+        var bukkitChunk = new CraftChunk((ServerLevel) this.level, this.chunkPos.x(), this.chunkPos.z());
         org.bukkit.event.world.ChunkUnloadEvent unloadEvent = new org.bukkit.event.world.ChunkUnloadEvent(bukkitChunk, this.isUnsaved());
         server.getPluginManager().callEvent(unloadEvent);
         // note: saving can be prevented, but not forced if no saving is actually required
         this.mustNotSave = !unloadEvent.isSaveChunk();
     }
 
-    @Redirect(method = "setBlockState", at = @At(value = "FIELD", ordinal = 1, target = "Lnet/minecraft/world/level/Level;isClientSide:Z"))
-    public boolean arclight$redirectIsRemote(Level world) {
-        return world.isClientSide() && this.arclight$doPlace;
+    // 26.1: skip BlockState.onPlace when Bukkit asks doPlace=false.
+    @Decorate(method = "setBlockState", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/state/BlockState;onPlace(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;Z)V"))
+    private void arclight$doPlace(BlockState state, Level level, BlockPos pos, BlockState oldState, boolean movedByPiston) throws Throwable {
+        if (this.arclight$doPlace) {
+            DecorationOps.callsite().invoke(state, level, pos, oldState, movedByPiston);
+        }
     }
+
 
     @Override
     public boolean isUnsaved() {

@@ -11,7 +11,10 @@ import io.izzel.arclight.common.mod.util.ArclightNbtHelper;
 import net.minecraft.world.level.storage.ValueInput;
 import net.minecraft.world.level.storage.ValueOutput;
 import net.minecraft.sounds.SoundEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.entity.ConversionParams;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -50,18 +53,14 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
     @Shadow public abstract boolean removeWhenFarAway(double distanceToClosestPlayer);
     @Shadow @Nullable public abstract LivingEntity getTarget();
     @Shadow private LivingEntity target;
-    @Shadow public abstract ItemStack getItemBySlot(EquipmentSlot slotIn);
     @Shadow public abstract boolean canHoldItem(ItemStack stack);
-    @Shadow protected abstract float getEquipmentDropChance(EquipmentSlot slotIn);
-    @Shadow public abstract void setItemSlot(EquipmentSlot slotIn, ItemStack stack);
-    @Shadow @Final public float[] handDropChances;
-    @Shadow @Final public float[] armorDropChances;
+    @Shadow public abstract net.minecraft.world.entity.DropChances getDropChances();
     @Shadow public abstract boolean isPersistenceRequired();
-    @Shadow protected void customServerAiStep() { }
+    @Shadow protected void customServerAiStep(ServerLevel level) { }
     @Shadow public abstract boolean isNoAi();
-    @Shadow protected abstract boolean canReplaceCurrentItem(ItemStack candidate, ItemStack existing);
+    @Shadow protected abstract boolean canReplaceCurrentItem(ItemStack candidate, ItemStack existing, EquipmentSlot slot);
     @Shadow protected abstract void setItemSlotAndDropWhenKilled(EquipmentSlot p_233657_1_, ItemStack p_233657_2_);
-    @Shadow @Nullable public abstract <T extends Mob> T convertTo(EntityType<T> p_233656_1_, boolean p_233656_2_);
+    @Shadow @Nullable public abstract <T extends Mob> T convertTo(EntityType<T> entityType, ConversionParams params, EntitySpawnReason spawnReason, ConversionParams.AfterConversion<T> afterConversion);
     @Shadow @Nullable protected abstract SoundEvent getAmbientSound();
     @Shadow public abstract void setTarget(@org.jetbrains.annotations.Nullable LivingEntity livingEntity);
     // @formatter:on
@@ -190,12 +189,12 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
     }
 
     @Inject(method = "pickUpItem", at = @At("HEAD"))
-    private void arclight$captureItemEntity(ItemEntity itemEntity, CallbackInfo ci) {
+    private void arclight$captureItemEntity(ServerLevel level, ItemEntity itemEntity, CallbackInfo ci) {
         arclight$item = itemEntity;
     }
 
     @Inject(method = "pickUpItem", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/item/ItemEntity;discard()V"))
-    private void arclight$pickupCause(ItemEntity itemEntity, CallbackInfo ci) {
+    private void arclight$pickupCause(ServerLevel level, ItemEntity itemEntity, CallbackInfo ci) {
         ((EntityBridge) itemEntity).bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.PICKUP);
     }
 
@@ -211,12 +210,16 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
      * @reason
      */
     @Overwrite
-    public ItemStack equipItemIfPossible(ItemStack stack) {
+    // 26.1: equipItemIfPossible(ServerLevel, ItemStack); DropChances; canReplaceCurrentItem(+slot).
+    public ItemStack equipItemIfPossible(ServerLevel level, ItemStack stack) {
         ItemEntity itemEntity = arclight$item;
         arclight$item = null;
         EquipmentSlot equipmentslottype = getEquipmentSlotForItem(stack);
+        if (!this.isEquippableInSlot(stack, equipmentslottype)) {
+            return ItemStack.EMPTY;
+        }
         ItemStack itemstack = this.getItemBySlot(equipmentslottype);
-        boolean flag = this.canReplaceCurrentItem(stack, itemstack);
+        boolean flag = this.canReplaceCurrentItem(stack, itemstack, equipmentslottype);
 
         if (equipmentslottype.isArmor() && !flag) {
             equipmentslottype = EquipmentSlot.MAINHAND;
@@ -229,10 +232,10 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
             canPickup = !CraftEventFactory.callEntityPickupItemEvent((Mob) (Object) this, itemEntity, 0, !canPickup).isCancelled();
         }
         if (canPickup) {
-            double d0 = this.getEquipmentDropChance(equipmentslottype);
+            double d0 = this.getDropChances().byEquipment(equipmentslottype);
             if (!itemstack.isEmpty() && (double) Math.max(this.random.nextFloat() - 0.1F, 0.0F) < d0) {
                 forceDrops = true;
-                this.spawnAtLocation(itemstack);
+                this.spawnAtLocation(level, itemstack);
                 forceDrops = false;
             }
 
@@ -244,13 +247,13 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
         }
     }
 
-    @Inject(method = "startRiding", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;dropLeash(ZZ)V"))
-    private void arclight$unleashRide(Entity entityIn, boolean force, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "startRiding", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;dropLeash()V"))
+    private void arclight$unleashRide(Entity entityIn, boolean force, boolean sendEventAndTriggers, CallbackInfoReturnable<Boolean> cir) {
         Bukkit.getPluginManager().callEvent(new EntityUnleashEvent(this.getBukkitEntity(), EntityUnleashEvent.UnleashReason.UNKNOWN));
     }
 
-    @Decorate(method = "convertTo", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
-    private boolean arclight$copySpawn(net.minecraft.world.level.Level world, Entity entityIn) throws Throwable {
+    @Decorate(method = "convertTo(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/world/entity/ConversionParams;Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/ConversionParams$AfterConversion;)Lnet/minecraft/world/entity/Mob;", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    private boolean arclight$copySpawn(ServerLevel world, Entity entityIn) throws Throwable {
         EntityTransformEvent.TransformReason transformReason = arclight$transform == null ? EntityTransformEvent.TransformReason.UNKNOWN : arclight$transform;
         arclight$transform = null;
         if (CraftEventFactory.callEntityTransformEvent((Mob) (Object) this, (LivingEntity) entityIn, transformReason).isCancelled()) {
@@ -260,21 +263,21 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
         }
     }
 
-    @Inject(method = "convertTo", at = @At("RETURN"))
-    private <T extends Mob> void arclight$cleanReason(EntityType<T> p_233656_1_, boolean p_233656_2_, CallbackInfoReturnable<T> cir) {
+    @Inject(method = "convertTo(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/world/entity/ConversionParams;Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/ConversionParams$AfterConversion;)Lnet/minecraft/world/entity/Mob;", at = @At("RETURN"))
+    private <T extends Mob> void arclight$cleanReason(EntityType<T> entityType, ConversionParams params, EntitySpawnReason spawnReason, ConversionParams.AfterConversion<T> afterConversion, CallbackInfoReturnable<T> cir) {
         ((WorldBridge) this.level()).bridge$pushAddEntityReason(null);
         this.arclight$transform = null;
     }
 
-    @Inject(method = "convertTo", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;discard()V"))
-    private <T extends Mob> void arclight$transformCause(EntityType<T> entityType, boolean bl, CallbackInfoReturnable<T> cir) {
+    @Inject(method = "convertTo(Lnet/minecraft/world/entity/EntityType;Lnet/minecraft/world/entity/ConversionParams;Lnet/minecraft/world/entity/EntitySpawnReason;Lnet/minecraft/world/entity/ConversionParams$AfterConversion;)Lnet/minecraft/world/entity/Mob;", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;discard()V"))
+    private <T extends Mob> void arclight$transformCause(EntityType<T> entityType, ConversionParams params, EntitySpawnReason spawnReason, ConversionParams.AfterConversion<T> afterConversion, CallbackInfoReturnable<T> cir) {
         this.bridge$pushEntityRemoveCause(EntityRemoveEvent.Cause.TRANSFORMATION);
     }
 
     public <T extends Mob> T convertTo(EntityType<T> entityType, boolean flag, EntityTransformEvent.TransformReason transformReason, CreatureSpawnEvent.SpawnReason spawnReason) {
         ((WorldBridge) this.level()).bridge$pushAddEntityReason(spawnReason);
         bridge$pushTransformReason(transformReason);
-        return this.convertTo(entityType, flag);
+        return this.convertTo(entityType, ConversionParams.single((Mob) (Object) this, flag, flag), EntitySpawnReason.CONVERSION, converted -> {});
     }
 
     private transient EntityTransformEvent.TransformReason arclight$transform;
@@ -284,9 +287,11 @@ public abstract class MobMixin extends LivingEntityMixin implements MobBridge {
         this.arclight$transform = transformReason;
     }
 
-    @Inject(method = "doHurtTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/LivingEntity;knockback(DDD)V"))
-    private void arclight$attackKnockback(Entity entity, CallbackInfoReturnable<Boolean> cir) {
-        ((LivingEntityBridge) entity).bridge$pushKnockbackCause((Entity) (Object) this, EntityKnockbackEvent.KnockbackCause.ENTITY_ATTACK);
+    @Inject(method = "doHurtTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;causeExtraKnockback(Lnet/minecraft/world/entity/Entity;FLnet/minecraft/world/phys/Vec3;)V"))
+    private void arclight$attackKnockback(ServerLevel level, Entity entity, CallbackInfoReturnable<Boolean> cir) {
+        if (entity instanceof LivingEntityBridge living) {
+            living.bridge$pushKnockbackCause((Entity) (Object) this, EntityKnockbackEvent.KnockbackCause.ENTITY_ATTACK);
+        }
     }
 
     @Inject(method = "checkDespawn", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;discard()V"))

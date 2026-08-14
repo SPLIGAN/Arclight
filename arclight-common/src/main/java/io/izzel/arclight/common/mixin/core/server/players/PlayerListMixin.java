@@ -113,7 +113,7 @@ public abstract class PlayerListMixin implements PlayerListBridge {
     @Shadow public abstract boolean isWhiteListed(NameAndId profile);
     @Shadow @Final private IpBanList ipBans;
     @Shadow @Final public List<ServerPlayer> players;
-    @Shadow public int maxPlayers;
+    @Shadow public abstract int getMaxPlayers();
     @Shadow public abstract boolean canBypassPlayerLimit(NameAndId profile);
     @Shadow protected abstract void save(ServerPlayer playerIn);
     @Shadow @Final private MinecraftServer server;
@@ -137,12 +137,12 @@ public abstract class PlayerListMixin implements PlayerListBridge {
     }
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void arclight$loadServer(MinecraftServer minecraftServer, LayeredRegistryAccess<RegistryLayer> p_251844_, PlayerDataStorage p_203844_, int p_203845_, CallbackInfo ci) {
+    private void arclight$loadServer(MinecraftServer minecraftServer, LayeredRegistryAccess<RegistryLayer> p_251844_, PlayerDataStorage p_203844_, net.minecraft.server.notifications.NotificationService notificationService, CallbackInfo ci) {
         cserver = ArclightServer.createOrLoad((DedicatedServer) minecraftServer, (PlayerList) (Object) this);
     }
 
-    @Redirect(method = "placeNewPlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;getLevel(Lnet/minecraft/resources/ResourceKey;)Lnet/minecraft/server/level/ServerLevel;"))
-    private ServerLevel arclight$spawnLocationEvent(MinecraftServer minecraftServer, ResourceKey<Level> dimension, Connection netManager, ServerPlayer playerIn) {
+    @Redirect(method = "placeNewPlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;level()Lnet/minecraft/server/level/ServerLevel;", ordinal = 0))
+    private ServerLevel arclight$spawnLocationEvent(ServerPlayer playerIn, Connection netManager, ServerPlayer playerArg, net.minecraft.server.network.CommonListenerCookie cookie) {
         CraftPlayer player = ((ServerPlayerBridge) playerIn).bridge$getBukkitEntity();
         PlayerSpawnLocationEvent event = new PlayerSpawnLocationEvent(player, player.getLocation());
         cserver.getPluginManager().callEvent(event);
@@ -153,18 +153,18 @@ public abstract class PlayerListMixin implements PlayerListBridge {
         return world;
     }
 
-    @Redirect(method = "placeNewPlayer", at = @At(value = "FIELD", target = "Lnet/minecraft/server/players/PlayerList;viewDistance:I"))
-    private int arclight$spigotViewDistance(PlayerList playerList, Connection netManager, ServerPlayer playerIn) {
+    @Redirect(method = "placeNewPlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;getViewDistance()I"))
+    private int arclight$spigotViewDistance(PlayerList playerList, Connection netManager, ServerPlayer playerIn, net.minecraft.server.network.CommonListenerCookie cookie) {
         return ((WorldBridge) playerIn.level()).bridge$spigotConfig().viewDistance;
     }
 
-    @Redirect(method = "placeNewPlayer", at = @At(value = "FIELD", target = "Lnet/minecraft/server/players/PlayerList;simulationDistance:I"))
-    private int arclight$spigotSimDistance(PlayerList instance, Connection netManager, ServerPlayer playerIn) {
+    @Redirect(method = "placeNewPlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;getSimulationDistance()I"))
+    private int arclight$spigotSimDistance(PlayerList instance, Connection netManager, ServerPlayer playerIn, net.minecraft.server.network.CommonListenerCookie cookie) {
         return ((WorldBridge) playerIn.level()).bridge$spigotConfig().simulationDistance;
     }
 
     @Eject(method = "placeNewPlayer", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;broadcastSystemMessage(Lnet/minecraft/network/chat/Component;Z)V"))
-    private void arclight$playerJoin(PlayerList playerList, Component component, boolean flag, CallbackInfo ci, Connection netManager, ServerPlayer playerIn) {
+    private void arclight$playerJoin(PlayerList playerList, Component component, boolean flag, CallbackInfo ci, Connection netManager, ServerPlayer playerIn, net.minecraft.server.network.CommonListenerCookie cookie) {
         PlayerJoinEvent playerJoinEvent = new PlayerJoinEvent(((ServerPlayerBridge) playerIn).bridge$getBukkitEntity(), CraftChatMessage.fromComponent(component));
         this.players.add(playerIn);
         this.playersByUUID.put(playerIn.getUUID(), playerIn);
@@ -189,8 +189,8 @@ public abstract class PlayerListMixin implements PlayerListBridge {
         }
     }
 
-    @ModifyVariable(method = "placeNewPlayer", ordinal = 1, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/server/level/ServerLevel;addNewPlayer(Lnet/minecraft/server/level/ServerPlayer;)V"))
-    private ServerLevel arclight$handleWorldChanges(ServerLevel value, Connection connection, ServerPlayer player) {
+    @ModifyVariable(method = "placeNewPlayer", ordinal = 0, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/server/level/ServerLevel;addNewPlayer(Lnet/minecraft/server/level/ServerPlayer;)V"))
+    private ServerLevel arclight$handleWorldChanges(ServerLevel value, Connection connection, ServerPlayer player, net.minecraft.server.network.CommonListenerCookie cookie) {
         return player.level();
     }
 
@@ -263,7 +263,7 @@ public abstract class PlayerListMixin implements PlayerListBridge {
                 message.append(Component.translatable("multiplayer.disconnect.banned_ip.expiration", BAN_DATE_FORMAT.format(entry.getExpires())));
             }
             event.disallow(PlayerLoginEvent.Result.KICK_BANNED, CraftChatMessage.fromComponent(message));
-        } else if (this.players.size() >= this.maxPlayers && !this.canBypassPlayerLimit(nameAndId)) {
+        } else if (this.players.size() >= this.getMaxPlayers() && !this.canBypassPlayerLimit(nameAndId)) {
             event.disallow(PlayerLoginEvent.Result.KICK_FULL, SpigotConfig.serverFullMessage);
         }
         this.cserver.getPluginManager().callEvent(event);
@@ -441,8 +441,8 @@ public abstract class PlayerListMixin implements PlayerListBridge {
         }
     }
 
-    @Inject(method = "sendPlayerPermissionLevel(Lnet/minecraft/server/level/ServerPlayer;I)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;getCommands()Lnet/minecraft/commands/Commands;"))
-    private void arclight$calculatePerms(ServerPlayer player, int permLevel, CallbackInfo ci) {
+    @Inject(method = "sendPlayerPermissionLevel(Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/server/permissions/LevelBasedPermissionSet;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;getCommands()Lnet/minecraft/commands/Commands;"))
+    private void arclight$calculatePerms(ServerPlayer player, net.minecraft.server.permissions.LevelBasedPermissionSet permissions, CallbackInfo ci) {
         ((ServerPlayerBridge) player).bridge$getBukkitEntity().recalculatePermissions();
     }
 

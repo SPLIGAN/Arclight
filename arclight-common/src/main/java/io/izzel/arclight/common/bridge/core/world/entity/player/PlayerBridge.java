@@ -22,6 +22,8 @@ public interface PlayerBridge extends LivingEntityBridge {
 
     double bridge$platform$getBlockReach();
 
+    boolean bridge$isSkipDropItemEvent();
+
     default boolean bridge$platform$mayfly() {
         return ((Player) this).getAbilities().mayfly;
     }

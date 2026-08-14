@@ -17,7 +17,7 @@ public class EnderEyeItemMixin {
     @Decorate(method = "use", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
     private boolean arclight$returnIfFail(Level world, Entity entityIn, Level worldIn, Player playerIn, InteractionHand handIn) throws Throwable {
         if (!(boolean) DecorationOps.callsite().invoke(world, entityIn)) {
-            return (boolean) DecorationOps.cancel().invoke(InteractionResult.FAIL);
+            return (boolean) DecorationOps.cancel().invoke((InteractionResult) InteractionResult.FAIL);
         } else {
             return true;
         }

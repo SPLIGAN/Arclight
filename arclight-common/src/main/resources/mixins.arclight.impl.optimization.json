@@ -9,7 +9,6 @@
     "EntityMixin_Optimize",
     "GoalMixin",
     "MobMixin_Optimization",
-    "ShapesMixin",
     "activationrange.ActivationRangeMixin",
     "activationrange.EntityMixin_ActivationRange",
     "activationrange.ServerLevelMixin_ActivationRange",

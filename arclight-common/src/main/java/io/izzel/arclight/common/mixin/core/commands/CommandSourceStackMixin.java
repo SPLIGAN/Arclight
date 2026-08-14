@@ -10,6 +10,9 @@ import io.izzel.arclight.common.mod.server.command.ArclightDummyCommandSender;
 import net.minecraft.commands.CommandSource;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.permissions.Permission;
+import net.minecraft.server.permissions.PermissionLevel;
+import net.minecraft.server.permissions.PermissionSet;
 import net.minecraft.server.players.PlayerList;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
@@ -20,9 +23,7 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.Objects;
 
 @Mixin(CommandSourceStack.class)
@@ -31,7 +32,7 @@ public abstract class CommandSourceStackMixin implements CommandSourceStackBridg
     // @formatter:off
     @Shadow @Final @Mutable public CommandSource source;
     @Shadow public abstract ServerLevel getLevel();
-    @Shadow @Final private int permissionLevel;
+    @Shadow @Final private PermissionSet permissions;
     // @formatter:on
 
     @Override
@@ -41,15 +42,6 @@ public abstract class CommandSourceStackMixin implements CommandSourceStackBridg
 
     public CommandNode currentCommand;
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    @Inject(method = "hasPermission", cancellable = true, at = @At("HEAD"))
-    public void arclight$checkPermission(int level, CallbackInfoReturnable<Boolean> cir) {
-        CommandNode currentCommand = bridge$getCurrentCommand();
-        if (currentCommand != null) {
-            cir.setReturnValue(hasPermission(level, VanillaCommandWrapper.getPermission(currentCommand)));
-        }
-    }
-
     @Redirect(method = "broadcastToAdmins", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;isOp(Lnet/minecraft/server/players/NameAndId;)Z"))
     private boolean arclight$feedbackPermission(PlayerList instance, NameAndId profile) {
         return ((ServerPlayerBridge) instance.getPlayer(profile.id())).bridge$getBukkitEntity().hasPermission("minecraft.admin.command_feedback");
@@ -57,7 +49,8 @@ public abstract class CommandSourceStackMixin implements CommandSourceStackBridg
 
     public boolean hasPermission(int i, String bukkitPermission) {
         // World is null when loading functions
-        return ((getLevel() == null || !((CraftServer) Bukkit.getServer()).ignoreVanillaPermissions) && this.permissionLevel >= i) || getBukkitSender().hasPermission(bukkitPermission);
+        boolean vanillaOk = i <= 0 || this.permissions.hasPermission(new Permission.HasCommandLevel(PermissionLevel.byId(i)));
+        return ((getLevel() == null || !((CraftServer) Bukkit.getServer()).ignoreVanillaPermissions) && vanillaOk) || getBukkitSender().hasPermission(bukkitPermission);
     }
 
     @Override

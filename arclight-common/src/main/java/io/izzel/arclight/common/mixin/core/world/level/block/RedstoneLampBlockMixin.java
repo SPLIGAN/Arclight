@@ -23,8 +23,9 @@ public class RedstoneLampBlockMixin {
         }
     }
 
+    // 26.1: neighborChanged takes Orientation instead of fromPos.
     @Inject(method = "neighborChanged", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Level;setBlock(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;I)Z"))
-    public void arclight$blockRedstone(BlockState state, Level worldIn, BlockPos pos, Block blockIn, BlockPos fromPos, boolean isMoving, CallbackInfo ci) {
+    public void arclight$blockRedstone(BlockState state, Level worldIn, BlockPos pos, Block blockIn, net.minecraft.world.level.redstone.Orientation orientation, boolean isMoving, CallbackInfo ci) {
         if (CraftEventFactory.callRedstoneChange(worldIn, pos, 0, 15).getNewCurrent() != 15) {
             ci.cancel();
         }

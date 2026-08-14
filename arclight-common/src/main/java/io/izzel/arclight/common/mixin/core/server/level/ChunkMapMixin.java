@@ -9,8 +9,8 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.level.ChunkHolder;
 import net.minecraft.server.level.ChunkMap;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.server.level.progress.LevelLoadListener;
 import net.minecraft.util.thread.BlockableEventLoop;
+import net.minecraft.world.level.TicketStorage;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.ChunkGeneratorStructureState;
 import net.minecraft.world.level.chunk.LightChunkGetter;
@@ -38,12 +38,14 @@ import java.util.concurrent.Executor;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
+import it.unimi.dsi.fastutil.longs.Long2ObjectLinkedOpenHashMap;
+
 @Mixin(ChunkMap.class)
 public abstract class ChunkMapMixin implements ChunkMapBridge {
 
     // @formatter:off
-    @Shadow @Nullable protected abstract ChunkHolder getUpdatingChunkIfPresent(long chunkPosIn);
-    @Shadow protected abstract Iterable<ChunkHolder> getChunks();
+    @Shadow @Nullable public abstract ChunkHolder getUpdatingChunkIfPresent(long chunkPosIn);
+    @Shadow volatile Long2ObjectLinkedOpenHashMap<ChunkHolder> visibleChunkMap;
     @Shadow protected abstract void tick();
     @Shadow @Final public ServerLevel level;
     @Shadow @Final @Mutable private RandomState randomState;
@@ -54,7 +56,7 @@ public abstract class ChunkMapMixin implements ChunkMapBridge {
     // @formatter:on
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void arclight$updateRandom(ServerLevel p_214836_, LevelStorageSource.LevelStorageAccess p_214837_, DataFixer p_214838_, StructureTemplateManager p_214839_, Executor p_214840_, BlockableEventLoop p_214841_, LightChunkGetter p_214842_, ChunkGenerator chunkGenerator, LevelLoadListener p_214844_, ChunkStatusUpdateListener p_214845_, Supplier p_214846_, int p_214847_, boolean p_214848_, CallbackInfo ci) {
+    private void arclight$updateRandom(ServerLevel level, LevelStorageSource.LevelStorageAccess storageAccess, DataFixer dataFixer, StructureTemplateManager structureTemplateManager, Executor executor, BlockableEventLoop<?> mainThreadExecutor, LightChunkGetter lightChunkGetter, ChunkGenerator chunkGenerator, ChunkStatusUpdateListener chunkStatusListener, Supplier<?> overworldDataStorage, TicketStorage ticketStorage, int viewDistance, boolean syncWrites, CallbackInfo ci) {
         this.bridge$setChunkGenerator(chunkGenerator);
     }
 
@@ -77,7 +79,8 @@ public abstract class ChunkMapMixin implements ChunkMapBridge {
 
     @Override
     public Iterable<ChunkHolder> bridge$getLoadedChunksIterable() {
-        return this.getChunks();
+        // 26.1: getChunks() removed; visible map is the loaded-chunk view.
+        return this.visibleChunkMap.values();
     }
 
     @Override

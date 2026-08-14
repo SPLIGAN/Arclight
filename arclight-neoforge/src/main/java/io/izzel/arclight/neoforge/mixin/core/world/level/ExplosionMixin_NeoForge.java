@@ -12,13 +12,13 @@ import org.spongepowered.asm.mixin.Mixin;
 import java.util.Collections;
 import java.util.List;
 
-@Mixin(Explosion.class)
+@Mixin(ServerExplosion.class)
 public abstract class ExplosionMixin_NeoForge implements ExplosionBridge {
 
-    @Override
-    public void bridge$forge$onExplosionDetonate(Level level, Explosion explosion, List<Entity> list, double diameter) {
-        if (level instanceof ServerLevel serverLevel && explosion instanceof ServerExplosion serverExplosion) {
-            EventHooks.onExplosionDetonate(serverLevel, serverExplosion, list, Collections.emptyList());
-        }
-    }
+	@Override
+	public void bridge$forge$onExplosionDetonate(Level level, Explosion explosion, List<Entity> list, double diameter) {
+		if (level instanceof ServerLevel && explosion instanceof ServerExplosion serverExplosion) {
+			EventHooks.onExplosionDetonate(level, serverExplosion, list, Collections.emptyList());
+		}
+	}
 }

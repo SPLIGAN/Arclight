@@ -33,12 +33,7 @@ public abstract class AbstractMinecartContainerMixin extends AbstractMinecartMix
         transaction = new ArrayList<>();
     }
 
-    @Inject(method = "<init>(Lnet/minecraft/world/entity/EntityType;DDDLnet/minecraft/world/level/Level;)V", at = @At("RETURN"))
-    private void arclight$init(EntityType<?> type, double x, double y, double z, Level world, CallbackInfo ci) {
-        this.itemStacks = NonNullList.withSize(getContainerSize(), ItemStack.EMPTY);
-        maxStack = MAX_STACK;
-        transaction = new ArrayList<>();
-    }
+    // 26.1: positional constructor removed; carts use setInitialPos after EntityType+Level ctor.
 
     public List<HumanEntity> transaction;
     private int maxStack;

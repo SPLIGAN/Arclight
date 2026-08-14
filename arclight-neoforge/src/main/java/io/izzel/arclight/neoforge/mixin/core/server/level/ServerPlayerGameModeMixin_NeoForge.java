@@ -32,12 +32,13 @@ public abstract class ServerPlayerGameModeMixin_NeoForge implements ServerPlayer
 
     @Shadow @Final protected ServerPlayer player;
 
-    @Inject(method = "destroyBlock", remap = true, at = @At(value = "INVOKE", remap = false, target = "Lnet/neoforged/neoforge/common/CommonHooks;fireBlockBreak(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/GameType;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Lnet/neoforged/neoforge/event/level/BlockEvent$BreakEvent;"))
+    // 26.1: fireBlockBreak takes Player (not ServerPlayer) and returns BreakBlockEvent.
+    @Inject(method = "destroyBlock", remap = true, at = @At(value = "INVOKE", remap = false, target = "Lnet/neoforged/neoforge/common/CommonHooks;fireBlockBreak(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/GameType;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Lnet/neoforged/neoforge/event/level/block/BreakBlockEvent;"))
     private void arclight$beforePrimaryEventFired(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         ArclightCaptures.captureNextBlockBreakEventAsPrimaryEvent();
     }
 
-    @Inject(method = "destroyBlock", remap = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, remap = false, target = "Lnet/neoforged/neoforge/common/CommonHooks;fireBlockBreak(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/GameType;Lnet/minecraft/server/level/ServerPlayer;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Lnet/neoforged/neoforge/event/level/BlockEvent$BreakEvent;"))
+    @Inject(method = "destroyBlock", remap = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, remap = false, target = "Lnet/neoforged/neoforge/common/CommonHooks;fireBlockBreak(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/level/GameType;Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/state/BlockState;)Lnet/neoforged/neoforge/event/level/block/BreakBlockEvent;"))
     private void arclight$handleSecondaryBlockBreakEvents(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         ArclightCaptures.BlockBreakEventContext breakEventContext = ArclightCaptures.popSecondaryBlockBreakEvent();
         while (breakEventContext != null) {
@@ -48,7 +49,8 @@ public abstract class ServerPlayerGameModeMixin_NeoForge implements ServerPlayer
     }
 
     @Decorate(method = "handleBlockBreakAction", at = @At(value = "INVOKE", remap = false, target = "Lnet/neoforged/neoforge/common/CommonHooks;onLeftClickBlock(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;Lnet/minecraft/network/protocol/game/ServerboundPlayerActionPacket$Action;)Lnet/neoforged/neoforge/event/entity/player/PlayerInteractEvent$LeftClickBlock;"))
-    private PlayerInteractEvent.LeftClickBlock arclight$callInteractIfCancelled(Player player, BlockPos pos, Direction face, ServerboundPlayerActionPacket.Action action) throws Throwable {
+    private PlayerInteractEvent.LeftClickBlock arclight$callInteractIfCancelled(Player player, BlockPos pos, Direction face, ServerboundPlayerActionPacket.Action action,
+                                                                                BlockPos blockPos, ServerboundPlayerActionPacket.Action packetAction, Direction direction, int maxBuildHeight, int sequence) throws Throwable {
         final var event = (PlayerInteractEvent.LeftClickBlock) DecorationOps.callsite().invoke(player, pos, face, action);
         // NeoForge doesn't care about the item is being used or not, only whether it's cancelled
         if (event.isCanceled()) {

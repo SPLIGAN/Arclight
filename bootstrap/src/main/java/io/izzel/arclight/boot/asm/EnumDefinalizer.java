@@ -9,6 +9,11 @@ import java.util.Set;
 
 public class EnumDefinalizer implements Implementer {
 
+    /**
+     * Bukkit types that historically needed $VALUES definalized for EnumHelper.
+     * Some (Art, Biome, Fluid) are now registry-backed {@code OldEnum} interfaces in 26.1+ —
+     * those have no $VALUES and are skipped at process time.
+     */
     static final Set<String> ENUM = Set.of(
         "org/bukkit/Material",
         "org/bukkit/potion/PotionType",
@@ -28,6 +33,11 @@ public class EnumDefinalizer implements Implementer {
     @Override
     public boolean processClass(ClassNode node) {
         if (ENUM.contains(node.name)) {
+            // Registry-backed OldEnum interfaces (Art, Biome, Fluid, …) are not real enums.
+            if ((node.access & Opcodes.ACC_ENUM) == 0) {
+                Implementer.LOGGER.debug("Skip enum definalize for non-enum type {}", node.name);
+                return false;
+            }
             var find = false;
             for (FieldNode field : node.fields) {
                 if (Modifier.isStatic(field.access) && Modifier.isFinal(field.access) && (field.name.equals("ENUM$VALUES") || field.name.equals("$VALUES"))) {

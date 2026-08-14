@@ -1,11 +1,12 @@
 package io.izzel.arclight.neoforge.mixin.core.world.level.block.entity;
 
+import io.izzel.arclight.common.mod.util.ArclightCaptures;
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
-import io.izzel.arclight.mixin.Local;
 import net.minecraft.core.NonNullList;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.entity.AbstractFurnaceBlockEntity;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.block.CraftBlock;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
@@ -16,8 +17,13 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(AbstractFurnaceBlockEntity.class)
 public abstract class AbstractFurnaceBlockEntityMixin_NeoForge {
 
-    @Decorate(method = "burn", at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/core/NonNullList;get(I)Ljava/lang/Object;"))
-    private static <E> E arclight$furnaceSmelt(NonNullList<E> instance, int i, @Local(ordinal = 0) AbstractFurnaceBlockEntity blockEntity, @Local(ordinal = -1) ItemStack itemStack2, @Local(ordinal = -2) ItemStack itemStack1) throws Throwable {
+    // 26.1: burn is void (no boolean return); fire FurnaceSmeltEvent at HEAD and cancel the body when needed.
+    @Decorate(method = "burn", inject = true, at = @At("HEAD"))
+    private static void arclight$furnaceSmelt(NonNullList<ItemStack> items, ItemStack itemStack1, ItemStack itemStack2) throws Throwable {
+        BlockEntity blockEntity = ArclightCaptures.getTickingBlockEntity();
+        if (blockEntity == null) {
+            return;
+        }
         CraftItemStack source = CraftItemStack.asCraftMirror(itemStack1);
         org.bukkit.inventory.ItemStack result = CraftItemStack.asBukkitCopy(itemStack2);
 
@@ -25,15 +31,19 @@ public abstract class AbstractFurnaceBlockEntityMixin_NeoForge {
         Bukkit.getPluginManager().callEvent(furnaceSmeltEvent);
 
         if (furnaceSmeltEvent.isCancelled()) {
-            return (E) DecorationOps.cancel().invoke(false);
+            DecorationOps.cancel().invoke();
+            return;
         }
 
         result = furnaceSmeltEvent.getResult();
-        itemStack2 = CraftItemStack.asNMSCopy(result);
-        if (itemStack2.isEmpty()) {
+        ItemStack nmsResult = CraftItemStack.asNMSCopy(result);
+        if (nmsResult.isEmpty()) {
             itemStack1.shrink(1);
-            return (E) DecorationOps.cancel().invoke(true);
+            DecorationOps.cancel().invoke();
+            return;
         }
-        return (E) DecorationOps.callsite().invoke(instance, i);
+        // Replace the result argument for the rest of burn().
+        itemStack2 = nmsResult;
+        DecorationOps.blackhole().invoke(itemStack2);
     }
 }

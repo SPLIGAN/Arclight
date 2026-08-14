@@ -8,11 +8,11 @@ import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.RandomSource;
-import net.minecraft.world.level.gamerules.GameRules;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.BaseFireBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.material.FluidState;
@@ -29,7 +29,7 @@ public abstract class LavaFluidMixin implements LavaFluidBridge {
 
     // @formatter:off
     @Shadow protected abstract boolean hasFlammableNeighbours(LevelReader worldIn, BlockPos pos);
-    @Shadow protected abstract boolean isFlammable(LevelReader arg, BlockPos arg2);
+    @Shadow protected abstract boolean isFlammable(LevelReader arg, BlockPos arg2, Direction face);
     // @formatter:on
 
     /**
@@ -37,52 +37,53 @@ public abstract class LavaFluidMixin implements LavaFluidBridge {
      * @reason
      */
     @Overwrite
-    public void randomTick(Level world, BlockPos pos, FluidState state, RandomSource random) {
-        if (world instanceof net.minecraft.server.level.ServerLevel serverLevel && serverLevel.getGameRules().get(GameRules.RANDOM_TICK_SPEED) > 0) {
-            int i = random.nextInt(3);
-            if (i > 0) {
-                BlockPos blockpos = pos;
+    // 26.1: randomTick takes ServerLevel; fire spread gated by canSpreadFireAround; place via BaseFireBlock.getState.
+    public void randomTick(ServerLevel world, BlockPos pos, FluidState state, RandomSource random) {
+        if (!world.canSpreadFireAround(pos)) {
+            return;
+        }
+        int i = random.nextInt(3);
+        if (i > 0) {
+            BlockPos blockpos = pos;
 
-                for (int j = 0; j < i; ++j) {
-                    blockpos = blockpos.offset(random.nextInt(3) - 1, 1, random.nextInt(3) - 1);
-                    if (!world.isLoaded(blockpos)) {
-                        return;
-                    }
-
-                    BlockState blockstate = world.getBlockState(blockpos);
-                    if (blockstate.isAir()) {
-                        if (this.hasFlammableNeighbours(world, blockpos)) {
-                            if (world.getBlockState(blockpos).getBlock() != Blocks.FIRE) {
-                                if (DistValidate.isValid(world) && CraftEventFactory.callBlockIgniteEvent(world, blockpos, pos).isCancelled()) {
-                                    continue;
-                                }
-                            }
-                            world.setBlockAndUpdate(blockpos, bridge$forge$fireFluidPlaceBlockEvent(world, blockpos, pos, Blocks.FIRE.defaultBlockState()));
-                            return;
-                        }
-                    } else if (blockstate.blocksMotion()) {
-                        return;
-                    }
+            for (int j = 0; j < i; ++j) {
+                blockpos = blockpos.offset(random.nextInt(3) - 1, 1, random.nextInt(3) - 1);
+                if (!world.isLoaded(blockpos)) {
+                    return;
                 }
-            } else {
-                for (int k = 0; k < 3; ++k) {
-                    BlockPos blockpos1 = pos.offset(random.nextInt(3) - 1, 0, random.nextInt(3) - 1);
-                    if (!world.isLoaded(blockpos1)) {
-                        return;
-                    }
 
-                    if (world.isEmptyBlock(blockpos1.above()) && bridge$forge$isFlammable(world, blockpos1, Direction.UP)) {
-                        BlockPos up = blockpos1.above();
-                        if (world.getBlockState(up).getBlock() != Blocks.FIRE) {
-                            if (DistValidate.isValid(world) && CraftEventFactory.callBlockIgniteEvent(world, up, pos).isCancelled()) {
+                BlockState blockstate = world.getBlockState(blockpos);
+                if (blockstate.isAir()) {
+                    if (this.hasFlammableNeighbours(world, blockpos)) {
+                        if (world.getBlockState(blockpos).getBlock() != Blocks.FIRE) {
+                            if (DistValidate.isValid(world) && CraftEventFactory.callBlockIgniteEvent(world, blockpos, pos).isCancelled()) {
                                 continue;
                             }
                         }
-                        world.setBlockAndUpdate(blockpos1.above(), bridge$forge$fireFluidPlaceBlockEvent(world, blockpos1.above(), pos, Blocks.FIRE.defaultBlockState()));
+                        world.setBlockAndUpdate(blockpos, bridge$forge$fireFluidPlaceBlockEvent(world, blockpos, pos, BaseFireBlock.getState(world, blockpos)));
+                        return;
                     }
+                } else if (blockstate.blocksMotion()) {
+                    return;
                 }
             }
+        } else {
+            for (int k = 0; k < 3; ++k) {
+                BlockPos blockpos1 = pos.offset(random.nextInt(3) - 1, 0, random.nextInt(3) - 1);
+                if (!world.isLoaded(blockpos1)) {
+                    return;
+                }
 
+                if (world.isEmptyBlock(blockpos1.above()) && bridge$forge$isFlammable(world, blockpos1, Direction.UP)) {
+                    BlockPos up = blockpos1.above();
+                    if (world.getBlockState(up).getBlock() != Blocks.FIRE) {
+                        if (DistValidate.isValid(world) && CraftEventFactory.callBlockIgniteEvent(world, up, pos).isCancelled()) {
+                            continue;
+                        }
+                    }
+                    world.setBlockAndUpdate(up, bridge$forge$fireFluidPlaceBlockEvent(world, up, pos, BaseFireBlock.getState(world, up)));
+                }
+            }
         }
     }
 
@@ -103,6 +104,6 @@ public abstract class LavaFluidMixin implements LavaFluidBridge {
 
     @Override
     public boolean bridge$forge$isFlammable(LevelReader level, BlockPos pos, Direction face) {
-        return this.isFlammable(level, pos);
+        return this.isFlammable(level, pos, face);
     }
 }

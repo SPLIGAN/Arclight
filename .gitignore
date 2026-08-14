@@ -7,3 +7,13 @@ bin/
 *.log
 run_*/
 run
+rules
+docs
+.cursor
+.github
+.cache
+.gradle
+buildSrc
+scripts
+*.txt
+dump_*.gradle

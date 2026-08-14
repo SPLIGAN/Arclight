@@ -156,8 +156,12 @@ import net.minecraft.world.entity.projectile.hurtingprojectile.windcharge.WindCh
 import net.minecraft.world.entity.raid.Raider;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecart;
 import net.minecraft.world.entity.vehicle.minecart.AbstractMinecartContainer;
+import net.minecraft.world.entity.vehicle.boat.AbstractBoat;
+import net.minecraft.world.entity.vehicle.boat.AbstractChestBoat;
 import net.minecraft.world.entity.vehicle.boat.Boat;
 import net.minecraft.world.entity.vehicle.boat.ChestBoat;
+import net.minecraft.world.entity.vehicle.boat.ChestRaft;
+import net.minecraft.world.entity.vehicle.boat.Raft;
 import net.minecraft.world.entity.vehicle.minecart.Minecart;
 import net.minecraft.world.entity.vehicle.minecart.MinecartChest;
 import net.minecraft.world.entity.vehicle.minecart.MinecartCommandBlock;
@@ -258,7 +262,12 @@ public class EntityClassLookup {
         boolean error = false;
         for (Class<?> entityClass : allEntityClasses) {
             if (ignored.contains(entityClass)) continue;
-            var optional = NMS_TO_BUKKIT.values().stream().filter(c -> c.bukkitClass == entityClass).findAny();
+            // Exact match, parent Bukkit type (Boat→OakBoat), or child mapping (SplashPotion→ThrownPotion).
+            var optional = NMS_TO_BUKKIT.values().stream()
+                .filter(c -> c.bukkitClass == entityClass
+                    || c.bukkitClass.isAssignableFrom(entityClass)
+                    || entityClass.isAssignableFrom(c.bukkitClass))
+                .findAny();
             if (optional.isEmpty()) {
                 error = true;
                 ArclightServer.LOGGER.error(entityClass + " has no valid entity class mapping");
@@ -336,6 +345,38 @@ public class EntityClassLookup {
         }
     }
 
+    /**
+     * 26.1: wood boats share NMS {@link Boat}/{@link Raft}/chest variants; Craft wrappers are per-EntityType
+     * ({@code CraftOakBoat}, …). Dispatch via CraftEntityTypes, with ArclightMod* fallback for modded boats.
+     */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <T extends Entity> BiFunction<CraftServer, T, org.bukkit.entity.Entity> dispatchCraftConvert() {
+        return (server, entity) -> {
+            var data = CraftEntityTypes.getEntityTypeData(CraftEntityType.minecraftToBukkit(entity.getType()));
+            if (data != null && data.convertFunction() != null) {
+                return (org.bukkit.entity.Entity) ((BiFunction) data.convertFunction()).apply(server, entity);
+            }
+            if (entity instanceof AbstractChestBoat chest) {
+                return new ArclightModChestBoat(server, chest);
+            }
+            if (entity instanceof AbstractBoat boat) {
+                return new ArclightModBoat(server, boat);
+            }
+            throw new IllegalArgumentException("No Craft convert for " + entity.getType());
+        };
+    }
+
+    /** Use when Craft* ctor is package-private but registered in CraftEntityTypes. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static <T extends Entity> BiFunction<CraftServer, T, org.bukkit.entity.Entity> convertFromBukkitEntityClass(Class<? extends org.bukkit.entity.Entity> bukkitClass) {
+        var data = CraftEntityTypes.getEntityTypeData(bukkitClass);
+        if (data == null || data.convertFunction() == null) {
+            throw new IllegalStateException("Missing CraftEntityTypes convert for " + bukkitClass.getName());
+        }
+        BiFunction convert = data.convertFunction();
+        return (server, entity) -> (org.bukkit.entity.Entity) convert.apply(server, entity);
+    }
+
     static {
         // abstract types
         add(Entity.class, new EntityClass<>(org.bukkit.entity.Entity.class, ArclightModEntity.class, ArclightModEntity::new));
@@ -343,6 +384,8 @@ public class EntityClassLookup {
         add(Mob.class, new EntityClass<>(org.bukkit.entity.Mob.class, org.bukkit.craftbukkit.entity.CraftMob.class, ArclightModMob::new));
         add(AbstractMinecart.class, new EntityClass<>(org.bukkit.entity.Minecart.class, ArclightModMinecart.class, ArclightModMinecart::new));
         add(AbstractMinecartContainer.class, new EntityClass<>(org.bukkit.entity.Minecart.class, ArclightModMinecartContainer.class, ArclightModMinecartContainer::new));
+        add(AbstractBoat.class, new EntityClass<>(org.bukkit.entity.Boat.class, ArclightModBoat.class, ArclightModBoat::new));
+        add(AbstractChestBoat.class, new EntityClass<>(org.bukkit.entity.ChestBoat.class, ArclightModChestBoat.class, ArclightModChestBoat::new));
         add(AbstractHorse.class, new EntityClass<>(org.bukkit.entity.AbstractHorse.class, ArclightModHorse.class, ArclightModHorse::new));
         add(AbstractChestedHorse.class, new EntityClass<>(org.bukkit.entity.ChestedHorse.class, ArclightModChestedHorse.class, ArclightModChestedHorse::new));
         add(Projectile.class, new EntityClass<>(org.bukkit.entity.Projectile.class, ArclightModProjectile.class, ArclightModProjectile::new));
@@ -471,9 +514,12 @@ public class EntityClassLookup {
         add(ThrownTrident.class, new EntityClass<>(org.bukkit.entity.Trident.class, org.bukkit.craftbukkit.entity.CraftTrident.class, org.bukkit.craftbukkit.entity.CraftTrident::new));
         add(LightningBolt.class, new EntityClass<>(org.bukkit.entity.LightningStrike.class, org.bukkit.craftbukkit.entity.CraftLightningStrike.class, org.bukkit.craftbukkit.entity.CraftLightningStrike::new));
         add(ShulkerBullet.class, new EntityClass<>(org.bukkit.entity.ShulkerBullet.class, org.bukkit.craftbukkit.entity.CraftShulkerBullet.class, org.bukkit.craftbukkit.entity.CraftShulkerBullet::new));
-        add(Boat.class, new EntityClass<>(org.bukkit.entity.Boat.class, org.bukkit.craftbukkit.entity.CraftBoat.class, CraftEntityTypes.getEntityTypeData(org.bukkit.entity.Boat.class).convertFunction()::apply));
+        // 26.1: NMS Boat/Raft/Chest* are shared; Bukkit types are per-wood (OakBoat, …) via CraftEntityTypes.
+        add(Boat.class, new EntityClass<>(org.bukkit.entity.Boat.class, ArclightModBoat.class, dispatchCraftConvert()));
+        add(Raft.class, new EntityClass<>(org.bukkit.entity.Boat.class, ArclightModBoat.class, dispatchCraftConvert()));
         add(LlamaSpit.class, new EntityClass<>(org.bukkit.entity.LlamaSpit.class, org.bukkit.craftbukkit.entity.CraftLlamaSpit.class, org.bukkit.craftbukkit.entity.CraftLlamaSpit::new));
-        add(ChestBoat.class, new EntityClass<>(org.bukkit.entity.ChestBoat.class, org.bukkit.craftbukkit.entity.CraftChestBoat.class, CraftEntityTypes.getEntityTypeData(org.bukkit.entity.ChestBoat.class).convertFunction()::apply));
+        add(ChestBoat.class, new EntityClass<>(org.bukkit.entity.ChestBoat.class, ArclightModChestBoat.class, dispatchCraftConvert()));
+        add(ChestRaft.class, new EntityClass<>(org.bukkit.entity.ChestBoat.class, ArclightModChestBoat.class, dispatchCraftConvert()));
         add(Marker.class, new EntityClass<>(org.bukkit.entity.Marker.class, org.bukkit.craftbukkit.entity.CraftMarker.class, org.bukkit.craftbukkit.entity.CraftMarker::new));
         add(Display.BlockDisplay.class, new EntityClass<>(org.bukkit.entity.BlockDisplay.class, org.bukkit.craftbukkit.entity.CraftBlockDisplay.class, org.bukkit.craftbukkit.entity.CraftBlockDisplay::new));
         add(Interaction.class, new EntityClass<>(org.bukkit.entity.Interaction.class, org.bukkit.craftbukkit.entity.CraftInteraction.class, org.bukkit.craftbukkit.entity.CraftInteraction::new));
@@ -486,8 +532,8 @@ public class EntityClassLookup {
         add(LeashFenceKnotEntity.class, new EntityClass<>(org.bukkit.entity.LeashHitch.class, org.bukkit.craftbukkit.entity.CraftLeash.class, org.bukkit.craftbukkit.entity.CraftLeash::new));
         add(Snowball.class, new EntityClass<>(org.bukkit.entity.Snowball.class, org.bukkit.craftbukkit.entity.CraftSnowball.class, org.bukkit.craftbukkit.entity.CraftSnowball::new));
         add(EyeOfEnder.class, new EntityClass<>(org.bukkit.entity.EnderSignal.class, org.bukkit.craftbukkit.entity.CraftEnderSignal.class, org.bukkit.craftbukkit.entity.CraftEnderSignal::new));
-        add(ThrownSplashPotion.class, new EntityClass<>(org.bukkit.entity.ThrownPotion.class, org.bukkit.craftbukkit.entity.CraftThrownPotion.class, CraftEntityTypes.getEntityTypeData(org.bukkit.entity.ThrownPotion.class).convertFunction()::apply));
-        add(ThrownLingeringPotion.class, new EntityClass<>(org.bukkit.entity.ThrownPotion.class, org.bukkit.craftbukkit.entity.CraftThrownPotion.class, CraftEntityTypes.getEntityTypeData(org.bukkit.entity.ThrownPotion.class).convertFunction()::apply));
+        add(ThrownSplashPotion.class, new EntityClass<>(org.bukkit.entity.SplashPotion.class, org.bukkit.craftbukkit.entity.CraftSplashPotion.class, org.bukkit.craftbukkit.entity.CraftSplashPotion::new));
+        add(ThrownLingeringPotion.class, new EntityClass<>(org.bukkit.entity.LingeringPotion.class, org.bukkit.craftbukkit.entity.CraftLingeringPotion.class, org.bukkit.craftbukkit.entity.CraftLingeringPotion::new));
         add(PrimedTnt.class, new EntityClass<>(org.bukkit.entity.TNTPrimed.class, org.bukkit.craftbukkit.entity.CraftTNTPrimed.class, org.bukkit.craftbukkit.entity.CraftTNTPrimed::new));
         add(FallingBlockEntity.class, new EntityClass<>(org.bukkit.entity.FallingBlock.class, org.bukkit.craftbukkit.entity.CraftFallingBlock.class, org.bukkit.craftbukkit.entity.CraftFallingBlock::new));
         add(FireworkRocketEntity.class, new EntityClass<>(org.bukkit.entity.Firework.class, org.bukkit.craftbukkit.entity.CraftFirework.class, org.bukkit.craftbukkit.entity.CraftFirework::new));
@@ -496,9 +542,9 @@ public class EntityClassLookup {
         add(Minecart.class, new EntityClass<>(org.bukkit.entity.minecart.RideableMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartRideable.class, org.bukkit.craftbukkit.entity.CraftMinecartRideable::new));
         add(MinecartChest.class, new EntityClass<>(org.bukkit.entity.minecart.StorageMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartChest.class, org.bukkit.craftbukkit.entity.CraftMinecartChest::new));
         add(MinecartFurnace.class, new EntityClass<>(org.bukkit.entity.minecart.PoweredMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartFurnace.class, org.bukkit.craftbukkit.entity.CraftMinecartFurnace::new));
-        add(MinecartTNT.class, new EntityClass<>(org.bukkit.entity.minecart.ExplosiveMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartTNT.class, CraftEntityTypes.getEntityTypeData(org.bukkit.entity.minecart.ExplosiveMinecart.class).convertFunction()::apply));
+        add(MinecartTNT.class, new EntityClass<>(org.bukkit.entity.minecart.ExplosiveMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartTNT.class, convertFromBukkitEntityClass(org.bukkit.entity.minecart.ExplosiveMinecart.class)));
         add(MinecartHopper.class, new EntityClass<>(org.bukkit.entity.minecart.HopperMinecart.class, org.bukkit.craftbukkit.entity.CraftMinecartHopper.class, org.bukkit.craftbukkit.entity.CraftMinecartHopper::new));
-        add(MinecartSpawner.class, new EntityClass<>(org.bukkit.entity.minecart.SpawnerMinecart.class, forName("CraftMinecartMobSpawner"), CraftEntityTypes.getEntityTypeData(org.bukkit.entity.minecart.SpawnerMinecart.class).convertFunction()::apply));
+        add(MinecartSpawner.class, new EntityClass<>(org.bukkit.entity.minecart.SpawnerMinecart.class, forName("CraftMinecartMobSpawner"), convertFromBukkitEntityClass(org.bukkit.entity.minecart.SpawnerMinecart.class)));
         add(FishingHook.class, new EntityClass<>(org.bukkit.entity.FishHook.class, org.bukkit.craftbukkit.entity.CraftFishHook.class, org.bukkit.craftbukkit.entity.CraftFishHook::new));
         add(ServerPlayer.class, new EntityClass<>(org.bukkit.entity.Player.class, org.bukkit.craftbukkit.entity.CraftPlayer.class, org.bukkit.craftbukkit.entity.CraftPlayer::new));
         add(Bogged.class, new EntityClass<>(org.bukkit.entity.Bogged.class, org.bukkit.craftbukkit.entity.CraftBogged.class, org.bukkit.craftbukkit.entity.CraftBogged::new));

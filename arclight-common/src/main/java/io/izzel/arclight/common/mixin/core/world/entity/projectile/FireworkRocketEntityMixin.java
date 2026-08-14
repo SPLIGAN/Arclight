@@ -1,6 +1,7 @@
 package io.izzel.arclight.common.mixin.core.world.entity.projectile;
 
 import io.izzel.arclight.common.mixin.core.world.entity.EntityMixin;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.projectile.FireworkRocketEntity;
 import org.bukkit.craftbukkit.event.CraftEventFactory;
 import org.bukkit.event.entity.EntityRemoveEvent;
@@ -13,7 +14,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class FireworkRocketEntityMixin extends EntityMixin {
 
     @Inject(method = "explode", cancellable = true, at = @At("HEAD"))
-    private void arclight$fireworksExplode(CallbackInfo ci) {
+    private void arclight$fireworksExplode(ServerLevel level, CallbackInfo ci) {
         if (CraftEventFactory.callFireworkExplodeEvent((FireworkRocketEntity) (Object) this).isCancelled()) {
             ci.cancel();
         } else {

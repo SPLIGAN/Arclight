@@ -2,7 +2,7 @@ package io.izzel.arclight.common.mixin.core.world.item.crafting;
 
 import io.izzel.arclight.common.bridge.core.world.item.crafting.RecipeBridge;
 import io.izzel.arclight.common.bridge.core.world.item.crafting.RecipeHolderBridge;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.item.crafting.RecipeHolder;
 import org.bukkit.craftbukkit.util.CraftNamespacedKey;
 import org.bukkit.inventory.Recipe;
@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.Shadow;
 public class RecipeHolderMixin<T extends net.minecraft.world.item.crafting.Recipe<?>> implements RecipeHolderBridge {
 
     @Shadow @Final private T value;
-    @Shadow @Final private Identifier id;
+    @Shadow @Final private ResourceKey<net.minecraft.world.item.crafting.Recipe<?>> id;
 
     @Override
     public Recipe bridge$toBukkitRecipe() {
@@ -22,6 +22,6 @@ public class RecipeHolderMixin<T extends net.minecraft.world.item.crafting.Recip
     }
 
     public Recipe toBukkitRecipe() {
-        return ((RecipeBridge) this.value).bridge$toBukkitRecipe(CraftNamespacedKey.fromMinecraft(this.id));
+        return ((RecipeBridge) this.value).bridge$toBukkitRecipe(CraftNamespacedKey.fromMinecraft(this.id.identifier()));
     }
 }

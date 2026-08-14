@@ -44,7 +44,7 @@ public abstract class BoatItemMixin extends Item {
         if (DistValidate.isValid(level)) {
             PlayerInteractEvent event = CraftEventFactory.callPlayerInteractEvent(player, Action.RIGHT_CLICK_BLOCK, ((BlockHitResult) result).getBlockPos(), ((BlockHitResult) result).getDirection(), itemstack, false, interactionHand, result.getLocation());
             if (event.isCancelled()) {
-                DecorationOps.cancel().invoke(InteractionResult.PASS);
+                DecorationOps.cancel().invoke((InteractionResult) InteractionResult.PASS);
                 return;
             }
         }
@@ -55,10 +55,10 @@ public abstract class BoatItemMixin extends Item {
     private boolean arclight$entityPlace(Level instance, Entity entity, @NotNull Level worldIn, Player playerIn, @NotNull InteractionHand handIn,
                                          @Local(ordinal = 0) ItemStack itemstack, @Local(ordinal = 0) HitResult result) throws Throwable {
         if (DistValidate.isValid(worldIn) && CraftEventFactory.callEntityPlaceEvent(worldIn, ((BlockHitResult) result).getBlockPos(), ((BlockHitResult) result).getDirection(), playerIn, entity, handIn).isCancelled()) {
-            return (boolean) DecorationOps.cancel().invoke(InteractionResult.FAIL);
+            return (boolean) DecorationOps.cancel().invoke((InteractionResult) InteractionResult.FAIL);
         }
         if (!(boolean) DecorationOps.callsite().invoke(instance, entity)) {
-            return (boolean) DecorationOps.cancel().invoke(InteractionResult.PASS);
+            return (boolean) DecorationOps.cancel().invoke((InteractionResult) InteractionResult.PASS);
         }
         return true;
     }

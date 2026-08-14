@@ -3,15 +3,11 @@ package io.izzel.arclight.neoforge.mixin.core.world.entity;
 import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.tools.product.Product;
 import io.izzel.tools.product.Product4;
-import net.minecraft.core.BlockPos;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.level.BlockGetter;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.common.extensions.IEntityExtension;
 import net.neoforged.neoforge.entity.PartEntity;
@@ -32,7 +28,7 @@ public abstract class EntityMixin_NeoForge implements EntityBridge, IEntityExten
     @Shadow private float yRot;
     @Shadow private float xRot;
     @Shadow public abstract float getXRot();
-    @Shadow public abstract void moveTo(double d, double e, double f, float g, float h);
+    @Shadow public abstract void snapTo(double d, double e, double f, float g, float h);
     @Shadow public abstract void setDeltaMovement(Vec3 vec3);
     @Shadow public abstract void unRide();
     @Shadow public abstract float getYRot();
@@ -55,15 +51,7 @@ public abstract class EntityMixin_NeoForge implements EntityBridge, IEntityExten
         this.revive();
     }
 
-    @Redirect(method = "updateFluidHeightAndDoFluidPushing()V", remap = false, at = @At(value = "INVOKE", remap = true, target="Lnet/minecraft/world/level/material/FluidState;getFlow(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/Vec3;"))
-    private Vec3 arclight$setLava(FluidState instance, BlockGetter level, BlockPos pos) {
-        if (instance.getType().is(FluidTags.LAVA)) {
-            this.bridge$setLastLavaContact(pos.immutable());
-        }
-        return instance.getFlow(level, pos);
-    }
-
-    @Redirect(method = "spawnAtLocation(Lnet/minecraft/world/item/ItemStack;F)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", remap = false, ordinal = 0, target = "Lnet/minecraft/world/entity/Entity;captureDrops()Ljava/util/Collection;"))
+    @Redirect(method = "spawnAtLocation(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/phys/Vec3;)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At(value = "INVOKE", remap = false, ordinal = 0, target = "Lnet/minecraft/world/entity/Entity;captureDrops()Ljava/util/Collection;"))
     public Collection<ItemEntity> arclight$forceDrops(Entity entity) {
         Collection<ItemEntity> drops = entity.captureDrops();
         if (this.bridge$isForceDrops()) {

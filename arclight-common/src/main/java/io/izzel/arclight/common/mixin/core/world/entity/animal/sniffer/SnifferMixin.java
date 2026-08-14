@@ -15,7 +15,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(Sniffer.class)
 public abstract class SnifferMixin extends AnimalMixin {
 
-    @Redirect(method = "dropSeed", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    // 26.1: seed spawn moved into dropFromGiftLootTable callback (lambda$dropSeed$0).
+    @Redirect(method = "lambda$dropSeed$0", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
     private boolean arclight$dropSeed(ServerLevel instance, Entity entity) {
         var event = new EntityDropItemEvent(this.getBukkitEntity(), (Item) ((EntityBridge) entity).bridge$getBukkitEntity());
         Bukkit.getPluginManager().callEvent(event);

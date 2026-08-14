@@ -8,6 +8,7 @@ import io.izzel.arclight.common.bridge.core.server.level.ServerPlayerBridge;
 import io.izzel.arclight.common.bridge.core.world.IInventoryBridge;
 import io.izzel.arclight.common.bridge.core.server.MinecraftServerBridge;
 import io.izzel.arclight.common.bridge.core.world.level.ExplosionBridge;
+import io.izzel.arclight.common.bridge.core.world.level.border.WorldBorderBridge;
 import io.izzel.arclight.common.bridge.core.world.level.levelgen.flat.FlatLevelGeneratorSettingsBridge;
 import io.izzel.arclight.common.bridge.core.world.server.ServerChunkProviderBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerLevelBridge;
@@ -16,6 +17,7 @@ import io.izzel.arclight.common.bridge.core.world.level.storage.LevelStorageSour
 import io.izzel.arclight.common.bridge.core.world.level.saveddata.maps.MapItemSavedDataBridge;
 import io.izzel.arclight.common.bridge.core.world.level.storage.PrimaryLevelDataBridge;
 import io.izzel.arclight.common.mixin.core.world.level.LevelMixin;
+import io.izzel.arclight.common.mod.ArclightConstants;
 import io.izzel.arclight.common.mod.mixins.annotation.CreateConstructor;
 import io.izzel.arclight.common.mod.mixins.annotation.ShadowConstructor;
 import io.izzel.arclight.common.mod.server.ArclightServer;
@@ -55,10 +57,12 @@ import net.minecraft.world.entity.ai.navigation.PathNavigation;
 import net.minecraft.world.level.CustomSpawner;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ServerExplosion;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.border.WorldBorder;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.dimension.LevelStem;
@@ -88,7 +92,6 @@ import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.server.MapInitializeEvent;
 import org.bukkit.event.weather.LightningStrikeEvent;
 import org.bukkit.event.world.GenericGameEvent;
-import org.bukkit.event.world.TimeSkipEvent;
 import org.bukkit.event.world.WorldSaveEvent;
 import org.jetbrains.annotations.Nullable;
 import org.objectweb.asm.Opcodes;
@@ -116,12 +119,12 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
     // @formatter:off
     @Shadow public abstract boolean addFreshEntity(Entity entityIn);
     @Shadow public abstract boolean addWithUUID(Entity entityIn);
+    @Shadow public abstract WorldBorder getWorldBorder();
     @Shadow public abstract <T extends ParticleOptions> int sendParticles(T type, double posX, double posY, double posZ, int particleCount, double xOffset, double yOffset, double zOffset, double speed);
     @Shadow protected abstract boolean sendParticles(ServerPlayer player, boolean longDistance, double posX, double posY, double posZ, Packet<?> packet);
     @Shadow @Nonnull public abstract MinecraftServer getServer();
     @Shadow @Final private List<ServerPlayer> players;
     @Shadow public abstract ServerChunkCache getChunkSource();
-    @Shadow protected abstract void wakeUpAllPlayers();
     @Shadow @Final private ServerChunkCache chunkSource;
     @Shadow @Final public ServerLevelData serverLevelData;
     @Shadow @Final private PersistentEntitySectionManager<Entity> entityManager;
@@ -137,10 +140,17 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
     public LevelStorageSource.LevelStorageAccess convertable;
     public UUID uuid;
     public ResourceKey<LevelStem> typeKey;
+    // CraftBukkit 26.1: WorldGenSettings moved from MinecraftServer onto each ServerLevel.
+    public WorldGenSettings worldGenSettings;
 
     @Override
     public ResourceKey<LevelStem> getTypeKey() {
         return this.typeKey;
+    }
+
+    // CraftBukkit API used by CraftWorld#canGenerateStructures / CraftServer.
+    public WorldGenSettings getWorldGenSettings() {
+        return this.worldGenSettings != null ? this.worldGenSettings : this.getServer().getWorldGenSettings();
     }
 
     @ShadowConstructor
@@ -156,6 +166,7 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
         craftBridge.bridge$offerGeneratorCache(worldInfo.getLevelName(), gen);
         craftBridge.bridge$offerBiomeProviderCache(worldInfo.getLevelName(), biomeProvider);
         arclight$constructor(server, backgroundExecutor, levelSave, worldInfo, dimension, levelStem, isDebug, seed, specialSpawners, shouldBeTicking);
+        this.worldGenSettings = worldGenSettings;
     }
 
     // Support custom chunk generator; in consistency with CraftBukkit
@@ -221,15 +232,15 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
         return raw;
     }
 
-    @Redirect(method = "<init>", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/MinecraftServer;getWorldData()Lnet/minecraft/world/level/storage/WorldData;"))
-    private WorldData arclight$useRespective(MinecraftServer server) {
-        return K;
-    }
-
     @Inject(method = "<init>", at = @At("RETURN"))
     private void arclight$init(MinecraftServer minecraftServer, Executor backgroundExecutor, LevelStorageSource.LevelStorageAccess levelSave, ServerLevelData worldInfo, ResourceKey<Level> dimension, LevelStem levelStem, boolean isDebug, long seed, List<CustomSpawner> specialSpawners, boolean shouldBeTicking, CallbackInfo ci) {
+        // 26.1: WorldBorder is SavedData; bind Craft world on first access.
+        ((WorldBorderBridge) this.getWorldBorder()).bridge$setWorld((Level) (Object) this);
         this.pvpMode = Bukkit.getServer() != null && !Bukkit.getWorlds().isEmpty() ? Bukkit.getWorlds().get(0).getPVP() : true;
         this.convertable = levelSave;
+        if (this.worldGenSettings == null) {
+            this.worldGenSettings = minecraftServer.getWorldGenSettings();
+        }
         if (arclight$isActual() && this.dragonFight == null && this.environment == World.Environment.THE_END) {
             this.dragonFight = EnderDragonFight.createDefault();
             this.dragonFight.init((ServerLevel) (Object) this, seed, ServerLevel.END_SPAWN_POINT);
@@ -314,17 +325,18 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
         ((EntityBridge) passengerEntity).bridge$postTick();
     }
 
-    @Decorate(method = "tickChunk", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/util/RandomSource;nextInt(I)I"))
+    @Decorate(method = "tickThunder", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/util/RandomSource;nextInt(I)I"))
     private int arclight$modifyThunderChance(RandomSource instance, int i) throws Throwable {
         return (int) DecorationOps.callsite().invoke(instance, i == 100000 ? spigotConfig.thunderChance : i);
     }
 
-    @Inject(method = "tickChunk", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
-    private void arclight$spawnReasonForSkeletonHorse(LevelChunk levelChunk, int i, CallbackInfo ci) {
+    // 26.1: lightning / skeleton trap horse moved from tickChunk into tickThunder.
+    @Inject(method = "tickThunder", at = @At(value = "INVOKE", ordinal = 0, target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    private void arclight$spawnReasonForSkeletonHorse(LevelChunk levelChunk, CallbackInfo ci) {
         bridge$pushAddEntityReason(CreatureSpawnEvent.SpawnReason.LIGHTNING);
     }
 
-    @Decorate(method = "tickChunk", at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
+    @Decorate(method = "tickThunder", at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerLevel;addFreshEntity(Lnet/minecraft/world/entity/Entity;)Z"))
     private boolean arclight$spawnReasonForLightning(ServerLevel instance, Entity entity) throws Throwable {
         if (DistValidate.isValid(this)) {
             LightningStrikeEvent lightning = CraftEventFactory.callLightningStrikeEvent((LightningStrike) ((EntityBridge) entity).bridge$getBukkitEntity(), LightningStrikeEvent.Cause.WEATHER);
@@ -402,7 +414,7 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
 
     private transient boolean arclight$force = false;
 
-    @Decorate(method = "sendParticles(Lnet/minecraft/core/particles/ParticleOptions;DDDIDDDD)I", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;sendParticles(Lnet/minecraft/server/level/ServerPlayer;ZDDDLnet/minecraft/network/protocol/Packet;)Z"))
+    @Decorate(method = "sendParticles(Lnet/minecraft/core/particles/ParticleOptions;ZZDDDIDDDD)I", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;sendParticles(Lnet/minecraft/server/level/ServerPlayer;ZDDDLnet/minecraft/network/protocol/Packet;)Z"))
     public boolean arclight$particleVisible(ServerLevel serverWorld, ServerPlayer player, boolean longDistance, double posX, double posY, double posZ, Packet<?> packet) throws Throwable {
         try {
             return (boolean) DecorationOps.callsite().invoke(serverWorld, player, arclight$force, posX, posY, posZ, packet);
@@ -544,13 +556,37 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
         }
     }
 
-    @Decorate(method = "explode", inject = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/Explosion;interactsWithBlocks()Z"))
-    private void arclight$doExplosion(@Local(ordinal = -1) Explosion explosion) throws Throwable {
+    // 26.1: Explosion became ServerExplosion; cancel after NeoForge start hook / before explode().
+    @Decorate(method = "explode", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/ServerExplosion;explode()I"))
+    private int arclight$doExplosion(ServerExplosion explosion) throws Throwable {
         if (((ExplosionBridge) explosion).bridge$wasCancelled()) {
-            DecorationOps.cancel().invoke(explosion);
-            return;
+            return (int) DecorationOps.cancel().invoke();
         }
-        DecorationOps.blackhole().invoke();
+        return (int) DecorationOps.callsite().invoke(explosion);
+    }
+
+    // 26.1: concrete explode lives here (Level only declares abstract).
+    @ModifyVariable(method = "explode(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/damagesource/DamageSource;Lnet/minecraft/world/level/ExplosionDamageCalculator;DDDFZLnet/minecraft/world/level/Level$ExplosionInteraction;Lnet/minecraft/core/particles/ParticleOptions;Lnet/minecraft/core/particles/ParticleOptions;Lnet/minecraft/util/random/WeightedList;Lnet/minecraft/core/Holder;)V",
+        ordinal = 0, at = @At("HEAD"), argsOnly = true)
+    private Level.ExplosionInteraction arclight$standardExplodePre(Level.ExplosionInteraction interaction) {
+        if (interaction == ArclightConstants.STANDARD) {
+            arclight$blockInteractionOverride = Explosion.BlockInteraction.DESTROY;
+            return Level.ExplosionInteraction.BLOCK;
+        }
+        return interaction;
+    }
+
+    @ModifyVariable(method = "explode(Lnet/minecraft/world/entity/Entity;Lnet/minecraft/world/damagesource/DamageSource;Lnet/minecraft/world/level/ExplosionDamageCalculator;DDDFZLnet/minecraft/world/level/Level$ExplosionInteraction;Lnet/minecraft/core/particles/ParticleOptions;Lnet/minecraft/core/particles/ParticleOptions;Lnet/minecraft/util/random/WeightedList;Lnet/minecraft/core/Holder;)V",
+        at = @At(value = "LOAD", ordinal = 0))
+    private Explosion.BlockInteraction arclight$standardExplodePost(Explosion.BlockInteraction interaction) {
+        try {
+            if (arclight$blockInteractionOverride != null) {
+                return arclight$blockInteractionOverride;
+            }
+            return interaction;
+        } finally {
+            arclight$blockInteractionOverride = null;
+        }
     }
 
     @Inject(method = "getMapData", at = @At("RETURN"))
@@ -568,8 +604,12 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
         Bukkit.getServer().getPluginManager().callEvent(event);
     }
 
-    @Inject(method = "blockUpdated", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;updateNeighborsAt(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;)V"))
-    private void arclight$returnIfPopulate(BlockPos pos, Block block, CallbackInfo ci) {
+    // 26.1: blockUpdated removed; skip neighbor fan-out while the world is still populating.
+    @Inject(method = {
+        "updateNeighborsAt(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;)V",
+        "updateNeighborsAt(Lnet/minecraft/core/BlockPos;Lnet/minecraft/world/level/block/Block;Lnet/minecraft/world/level/redstone/Orientation;)V"
+    }, cancellable = true, at = @At("HEAD"))
+    private void arclight$returnIfPopulate(CallbackInfo ci) {
         if (populating) {
             ci.cancel();
         }
@@ -578,26 +618,6 @@ public abstract class ServerLevelMixin extends LevelMixin implements ServerLevel
     @Override
     public BlockEntity getBlockEntity(BlockPos pos, boolean validate) {
         return this.getBlockEntity(pos);
-    }
-
-    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;setDayTime(J)V"))
-    private void arclight$timeSkip(ServerLevel world, long time) {
-        TimeSkipEvent event = new TimeSkipEvent(this.getWorld(), TimeSkipEvent.SkipReason.NIGHT_SKIP, (time - time % 24000L) - io.izzel.arclight.common.mod.util.ArclightLevelHelper.getDayTime(world));
-        Bukkit.getPluginManager().callEvent(event);
-        arclight$timeSkipCancelled = event.isCancelled();
-        if (!event.isCancelled()) {
-            io.izzel.arclight.common.mod.util.ArclightLevelHelper.setDayTime(world, io.izzel.arclight.common.mod.util.ArclightLevelHelper.getDayTime(world) + event.getSkipAmount());
-        }
-    }
-
-    private transient boolean arclight$timeSkipCancelled;
-
-    @Redirect(method = "tick", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;wakeUpAllPlayers()V"))
-    private void arclight$notWakeIfCancelled(ServerLevel world) {
-        if (!arclight$timeSkipCancelled) {
-            this.wakeUpAllPlayers();
-        }
-        arclight$timeSkipCancelled = false;
     }
 
     @Override

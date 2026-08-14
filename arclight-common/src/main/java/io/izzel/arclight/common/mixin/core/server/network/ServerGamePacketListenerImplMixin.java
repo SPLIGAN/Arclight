@@ -55,6 +55,7 @@ import net.minecraft.network.protocol.game.ServerboundPlaceRecipePacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerAbilitiesPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerCommandPacket;
+import net.minecraft.network.protocol.game.ServerboundPlayerInputPacket;
 import net.minecraft.network.protocol.game.ServerboundRecipeBookChangeSettingsPacket;
 import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
 import net.minecraft.network.protocol.game.ServerboundSetCarriedItemPacket;
@@ -82,6 +83,7 @@ import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.MoverType;
+import net.minecraft.world.entity.PositionMoveRotation;
 import net.minecraft.world.entity.Relative;
 import net.minecraft.world.entity.player.ChatVisiblity;
 import net.minecraft.world.entity.player.Inventory;
@@ -217,7 +219,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
     @Shadow protected abstract void tryHandleChat(String string, Runnable runnable);
     @Shadow protected abstract <S> Map<String, PlayerChatMessage> collectSignedArguments(ServerboundChatCommandSignedPacket serverboundChatCommandSignedPacket, SignableCommand<S> signableCommand, LastSeenMessages lastSeenMessages) throws SignedMessageChain.DecodeException;
     @Shadow public abstract void sendDisguisedChatMessage(Component component, ChatType.Bound bound);
-    @Shadow public abstract void teleport(double d, double e, double f, float g, float h, Set<Relative> set);
+    @Shadow public abstract void teleport(PositionMoveRotation positionMoveRotation, Set<Relative> relatives);
     // @formatter:on
 
     private static final int SURVIVAL_PLACE_DISTANCE_SQUARED = 6 * 6;
@@ -256,6 +258,18 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
             ci.cancel();
         } else {
             processedDisconnect = true;
+        }
+    }
+
+    @Inject(method = "handlePlayerInput", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;setLastClientInput(Lnet/minecraft/world/entity/player/Input;)V"))
+    private void arclight$toggleSneak(ServerboundPlayerInputPacket packet, CallbackInfo ci) {
+        boolean shift = packet.input().shift();
+        if (shift != this.player.isShiftKeyDown()) {
+            PlayerToggleSneakEvent event = new PlayerToggleSneakEvent(this.getCraftPlayer(), shift);
+            this.cserver.getPluginManager().callEvent(event);
+            if (event.isCancelled()) {
+                ci.cancel();
+            }
         }
     }
 
@@ -624,7 +638,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
 
                             if (!this.player.noPhysics && !this.player.isSleeping() && (flag1 && worldserver.noCollision(this.player, axisalignedbb) || this.isPlayerCollidingWithAnythingNew(worldserver, axisalignedbb, d0, d1, d2))) {
                                 this.bridge$pushNoTeleportEvent();
-                                this.teleport(d3, d4, d5, f, f1, Collections.emptySet()); // CraftBukkit - SPIGOT-1807: Don't call teleport event, when the client thinks the player is falling, because the chunks are not loaded on the client yet.
+                                this.teleport(new PositionMoveRotation(new Vec3(d3, d4, d5), Vec3.ZERO, f, f1), Collections.emptySet()); // CraftBukkit - SPIGOT-1807: Don't call teleport event, when the client thinks the player is falling, because the chunks are not loaded on the client yet.
                                 this.player.doCheckFallDamage(this.player.getX() - d3, this.player.getY() - d4, this.player.getZ() - d5, packetplayinflying.isOnGround());
                             } else {
                                 // Reset to old location first
@@ -803,7 +817,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
         }
     }
 
-    @Inject(method = "handleUseItemOn", cancellable = true, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerPlayer;serverLevel()Lnet/minecraft/server/level/ServerLevel;"))
+    @Inject(method = "handleUseItemOn", cancellable = true, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerPlayer;level()Lnet/minecraft/server/level/ServerLevel;"))
     private void arclight$frozenUseItem(ServerboundUseItemOnPacket packetIn, CallbackInfo ci) {
         if (((ServerPlayerBridge) this.player).bridge$isMovementBlocked()) {
             ci.cancel();
@@ -890,7 +904,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
         return (InteractionResult) DecorationOps.callsite().invoke(instance, serverPlayer, level, itemStack, interactionHand);
     }
 
-    @Inject(method = "handleTeleportToEntityPacket", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDFF)V"))
+    @Inject(method = "handleTeleportToEntityPacket", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;teleportTo(Lnet/minecraft/server/level/ServerLevel;DDDLjava/util/Set;FFZ)Z"))
     private void arclight$spectateTeleport(ServerboundTeleportToEntityPacket packetIn, CallbackInfo ci) {
         ((ServerPlayerBridge) this.player).bridge$pushChangeDimensionCause(PlayerTeleportEvent.TeleportCause.SPECTATE);
     }
@@ -1642,12 +1656,17 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
     private transient boolean arclight$noTeleportEvent;
     private transient boolean arclight$teleportCancelled;
 
-    @Decorate(method = "teleport(DDDFFLjava/util/Set;)V", inject = true, at = @At("HEAD"))
-    private void arclight$teleportEvent(double x, double y, double z, float yaw, float pitch, Set<Relative> relativeSet) throws Throwable {
+    @Decorate(method = "teleport(Lnet/minecraft/world/entity/PositionMoveRotation;Ljava/util/Set;)V", inject = true, at = @At("HEAD"))
+    private void arclight$teleportEvent(PositionMoveRotation positionMoveRotation, Set<Relative> relativeSet) throws Throwable {
         PlayerTeleportEvent.TeleportCause cause = arclight$cause == null ? PlayerTeleportEvent.TeleportCause.UNKNOWN : arclight$cause;
         arclight$cause = null;
         Player player = this.getCraftPlayer();
         Location from = player.getLocation();
+        double x = positionMoveRotation.position().x;
+        double y = positionMoveRotation.position().y;
+        double z = positionMoveRotation.position().z;
+        float yaw = positionMoveRotation.yRot();
+        float pitch = positionMoveRotation.xRot();
         Location to = new Location(this.getCraftPlayer().getWorld(), x, y, z, yaw, pitch);
         if (!arclight$noTeleportEvent && !from.equals(to)) {
             PlayerTeleportEvent event = new PlayerTeleportEvent(player, from.clone(), to.clone(), cause);
@@ -1674,7 +1693,10 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
             pitch = 0.0f;
         }
         this.justTeleported = true;
-        DecorationOps.blackhole().invoke(x, y, z, yaw, pitch);
+        DecorationOps.blackhole().invoke(
+            new PositionMoveRotation(new Vec3(x, y, z), positionMoveRotation.deltaMovement(), yaw, pitch),
+            relativeSet
+        );
     }
 
     public void teleport(double d0, double d1, double d2, float f, float f1, PlayerTeleportEvent.TeleportCause cause) {
@@ -1683,12 +1705,12 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
 
     public void teleport(double d0, double d1, double d2, float f, float f1, Set<Relative> set, PlayerTeleportEvent.TeleportCause cause) {
         bridge$pushTeleportCause(cause);
-        this.teleport(d0, d1, d2, f, f1, set);
+        this.teleport(new PositionMoveRotation(new Vec3(d0, d1, d2), Vec3.ZERO, f, f1), set);
     }
 
     public void teleport(Location dest) {
         arclight$noTeleportEvent = true;
-        this.teleport(dest.getX(), dest.getY(), dest.getZ(), dest.getYaw(), dest.getPitch(), Collections.emptySet());
+        this.teleport(dest.getX(), dest.getY(), dest.getZ(), dest.getYaw(), dest.getPitch());
         arclight$noTeleportEvent = false;
     }
 

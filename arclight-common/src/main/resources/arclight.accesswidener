@@ -364,16 +364,16 @@ accessible field net/minecraft/world/level/block/SculkSpreader$ChargeCursor char
 accessible field net/minecraft/world/level/block/SculkSpreader$ChargeCursor pos Lnet/minecraft/core/BlockPos;
 accessible class net/minecraft/network/protocol/game/ClientboundBossEventPacket$UpdateProgressOperation
 accessible method net/minecraft/network/protocol/game/ClientboundBossEventPacket$UpdateProgressOperation <init> (F)V
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight portalLocation Lnet/minecraft/core/BlockPos;
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight dragonUUID Ljava/util/UUID;
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight level Lnet/minecraft/server/level/ServerLevel;
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight previouslyKilled Z
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight dragonEvent Lnet/minecraft/server/level/ServerBossEvent;
-# INVALID-26.1.2 accessible field net/minecraft/world/level/dimension/end/EndDragonFight respawnStage Lnet/minecraft/world/level/dimension/end/DragonRespawnAnimation;
-# INVALID-26.1.2 accessible method net/minecraft/world/level/dimension/end/EndDragonFight respawnDragon (Ljava/util/List;)V
-# INVALID-26.1.2 accessible method net/minecraft/world/level/dimension/end/EndDragonFight setRespawnStage (Lnet/minecraft/world/level/dimension/end/DragonRespawnAnimation;)V
-# INVALID-26.1.2 accessible method net/minecraft/world/level/dimension/end/EndDragonFight findExitPortal ()Lnet/minecraft/world/level/block/state/pattern/BlockPattern$BlockPatternMatch;
-# INVALID-26.1.2 accessible method net/minecraft/world/level/dimension/end/EndDragonFight spawnExitPortal (Z)V
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight exitPortalLocation Lnet/minecraft/core/BlockPos;
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight dragonUUID Ljava/util/UUID;
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight level Lnet/minecraft/server/level/ServerLevel;
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight hasPreviouslyKilledDragon Z
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight dragonEvent Lnet/minecraft/server/level/ServerBossEvent;
+accessible field net/minecraft/world/level/dimension/end/EnderDragonFight respawnStage Lnet/minecraft/world/level/dimension/end/DragonRespawnStage;
+accessible method net/minecraft/world/level/dimension/end/EnderDragonFight respawnDragon (Ljava/util/List;)V
+accessible method net/minecraft/world/level/dimension/end/EnderDragonFight setRespawnStage (Lnet/minecraft/world/level/dimension/end/DragonRespawnStage;)V
+accessible method net/minecraft/world/level/dimension/end/EnderDragonFight findExitPortal ()Lnet/minecraft/world/level/block/state/pattern/BlockPattern$BlockPatternMatch;
+accessible method net/minecraft/world/level/dimension/end/EnderDragonFight spawnExitPortal (Z)V
 accessible class net/minecraft/world/level/block/ComposterBlock$InputContainer
 # INVALID-26.1.2 accessible class net/minecraft/world/entity/monster/SpellcasterIllager$SpellcasterUseSpellGoal
 accessible class net/minecraft/world/entity/monster/illager/SpellcasterIllager$SpellcasterUseSpellGoal
@@ -495,6 +495,9 @@ accessible method net/minecraft/world/phys/shapes/IndirectMerger <init> (Lit/uni
 # TODO field net/minecraft/server/level/ServerChunkCache f_8328_
 # INVALID-26.1.2 accessible field net/minecraft/server/level/ServerChunkCache spawnFriendlies Z
 accessible field net/minecraft/server/level/ServerChunkCache spawnEnemies Z
+# CraftBukkit plugin chunk tickets (CraftWorld#removePluginChunkTickets etc.)
+accessible field net/minecraft/server/level/ServerChunkCache ticketStorage Lnet/minecraft/world/level/TicketStorage;
+accessible field net/minecraft/world/level/TicketStorage tickets Lit/unimi/dsi/fastutil/longs/Long2ObjectOpenHashMap;
 # TODO field net/minecraft/network/protocol/game/ServerboundResourcePackPacket f_134406_
 accessible field net/minecraft/world/level/block/entity/TheEndGatewayBlockEntity exactTeleport Z
 accessible field net/minecraft/world/level/block/entity/TheEndGatewayBlockEntity exitPortal Lnet/minecraft/core/BlockPos;

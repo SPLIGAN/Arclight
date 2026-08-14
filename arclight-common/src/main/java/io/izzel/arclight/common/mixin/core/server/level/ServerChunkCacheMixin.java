@@ -12,8 +12,8 @@ import net.minecraft.util.profiling.ProfilerFiller;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.gamerules.GameRule;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.TicketStorage;
 import net.minecraft.world.level.chunk.LevelChunk;
-import net.minecraft.world.level.storage.LevelData;
 import org.bukkit.entity.SpawnCategory;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -38,6 +38,7 @@ public abstract class ServerChunkCacheMixin implements ServerChunkProviderBridge
     @Shadow @Nullable protected abstract ChunkHolder getVisibleChunkIfPresent(long chunkPosIn);
     @Invoker("runDistanceManagerUpdates") public abstract boolean bridge$tickDistanceManager();
     @Accessor("lightEngine") public abstract ThreadedLevelLightEngine bridge$getLightManager();
+    @Accessor("ticketStorage") public abstract TicketStorage bridge$getTicketStorage();
     // @formatter:on
 
     public boolean isChunkLoaded(final int chunkX, final int chunkZ) {
@@ -85,14 +86,20 @@ public abstract class ServerChunkCacheMixin implements ServerChunkProviderBridge
         }
     }
 
-    @Redirect(method = "tickChunks", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/gamerules/GameRules;get(Lnet/minecraft/world/level/gamerules/GameRule;)Ljava/lang/Object;"))
-    private boolean arclight$noPlayer(GameRules gameRules, GameRule<Boolean> key) {
-        return gameRules.get(key) && !this.level.players().isEmpty();
+    @Redirect(method = "tickChunks(Lnet/minecraft/util/profiling/ProfilerFiller;J)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/gamerules/GameRules;get(Lnet/minecraft/world/level/gamerules/GameRule;)Ljava/lang/Object;", ordinal = 0))
+    private Object arclight$noPlayer(GameRules gameRules, GameRule<?> key) {
+        // 26.1: GameRules.get returns Object (Boolean/Integer); skip mob spawn when no players online.
+        Object value = gameRules.get(key);
+        if (value instanceof Boolean flag) {
+            return flag && !this.level.players().isEmpty();
+        }
+        return value;
     }
 
-    @Redirect(method = "tickChunks", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/storage/LevelData;getGameTime()J"))
-    private long arclight$ticksPer(LevelData worldInfo) {
-        long gameTime = worldInfo.getGameTime();
+    @Redirect(method = "tickChunks(Lnet/minecraft/util/profiling/ProfilerFiller;J)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerLevel;getGameTime()J"))
+    private long arclight$ticksPer(ServerLevel world) {
+        // 26.1: uses ServerLevel.getGameTime() (was LevelData.getGameTime).
+        long gameTime = world.getGameTime();
         long ticksPer = ((WorldBridge) this.level).bridge$ticksPerSpawnCategory().getLong(SpawnCategory.ANIMAL);
         return (ticksPer != 0L && gameTime % ticksPer == 0) ? 0 : 1;
     }
