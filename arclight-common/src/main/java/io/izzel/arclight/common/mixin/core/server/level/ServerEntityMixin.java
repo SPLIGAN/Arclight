@@ -8,6 +8,7 @@ import io.izzel.arclight.common.mod.mixins.annotation.CreateConstructor;
 import io.izzel.arclight.common.mod.mixins.annotation.ShadowConstructor;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundProjectilePowerPacket;
@@ -53,7 +54,6 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 @Mixin(ServerEntity.class)
@@ -62,7 +62,7 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     // @formatter:off
     @Shadow @Final private Entity entity;
     @Shadow private List<Entity> lastPassengers;
-    @Shadow @Final private Consumer<Packet<?>> broadcast;
+    @Shadow @Final private ServerEntity.Synchronizer synchronizer;
     @Shadow private int tickCount;
     @Shadow @Final private ServerLevel level;
     @Shadow protected abstract void sendDirtyEntityData();
@@ -72,13 +72,11 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     @Shadow private int teleportDelay;
     @Shadow private boolean wasOnGround;
     @Shadow @Final private boolean trackDelta;
-    @Shadow protected abstract void broadcastAndSend(Packet<?> packet);
     @Shadow @Nullable private List<SynchedEntityData.DataValue<?>> trackedDataValues;
-    @Shadow private static Stream<Entity> removedPassengers(List<Entity> p_277592_, List<Entity> p_277658_) { return null; }
-    @Shadow private int lastSentYRot;
-    @Shadow private int lastSentXRot;
+    @Shadow private byte lastSentYRot;
+    @Shadow private byte lastSentXRot;
     @Shadow private Vec3 lastSentMovement;
-    @Shadow private int lastSentYHeadRot;
+    @Shadow private byte lastSentYHeadRot;
     // @formatter:on
 
     private Set<ServerPlayerConnection> trackedPlayers;
@@ -86,21 +84,26 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     @Unique private int lastUpdate, lastPosUpdate, lastMapUpdate;
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void arclight$init(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer, CallbackInfo ci) {
+    private void arclight$init(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer, CallbackInfo ci) {
         trackedPlayers = new HashSet<>();
         lastTick = ArclightConstants.currentTick - 1;
         lastUpdate = lastPosUpdate = lastMapUpdate = -1;
     }
 
     @ShadowConstructor
-    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer) {
+    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer) {
         throw new NullPointerException();
     }
 
     @CreateConstructor
-    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer, Set<ServerPlayerConnection> set) {
-        arclight$constructor(serverWorld, entity, updateFrequency, sendVelocityUpdates, packetConsumer);
+    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer, Set<ServerPlayerConnection> set) {
+        arclight$constructor(serverWorld, entity, updateFrequency, sendVelocityUpdates, synchronizer);
         this.trackedPlayers = set;
+    }
+
+    @Unique
+    private static Stream<Entity> removedPassengers(List<Entity> newPassengers, List<Entity> oldPassengers) {
+        return oldPassengers.stream().filter(passenger -> !newPassengers.contains(passenger));
     }
 
     @Override
@@ -116,7 +119,7 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     public void sendChanges() {
         List<Entity> list = this.entity.getPassengers();
         if (!list.equals(this.lastPassengers)) {
-            this.broadcastAndSend(new ClientboundSetPassengersPacket(this.entity));
+            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetPassengersPacket(this.entity));
             removedPassengers(list, this.lastPassengers).forEach((p_289307_) -> {
                 if (p_289307_ instanceof ServerPlayer serverplayer1) {
                     serverplayer1.connection.teleport(serverplayer1.getX(), serverplayer1.getY(), serverplayer1.getZ(), serverplayer1.getYRot(), serverplayer1.getXRot());
@@ -153,9 +156,9 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 int l1 = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
                 boolean flag2 = Math.abs(i1 - this.lastSentYRot) >= 1 || Math.abs(l1 - this.lastSentXRot) >= 1;
                 if (flag2) {
-                    this.broadcast.accept(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i1, (byte) l1, this.entity.onGround()));
-                    this.lastSentYRot = i1;
-                    this.lastSentXRot = l1;
+                    this.synchronizer.sendToTrackingPlayers(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i1, (byte) l1, this.entity.onGround()));
+                    this.lastSentYRot = (byte) i1;
+                    this.lastSentXRot = (byte) l1;
                 }
                 this.positionCodec.setBase(this.entity.trackingPosition());
                 this.sendDirtyEntityData();
@@ -200,29 +203,29 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                     if (d0 > 1.0E-7D || d0 > 0.0D && vector3d1.lengthSqr() == 0.0D) {
                         this.lastSentMovement = vector3d1;
                         if ( this.entity instanceof AbstractHurtingProjectile entityfireball) {
-                            this.broadcast.accept(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
+                            this.synchronizer.sendToTrackingPlayers(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
                         } else {
-                            this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+                            this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
                         }
                     }
                 }
                 if (ipacket1 != null) {
-                    this.broadcast.accept(ipacket1);
+                    this.synchronizer.sendToTrackingPlayers((Packet<? super ClientGamePacketListener>) ipacket1);
                 }
                 this.sendDirtyEntityData();
                 if (pos) {
                     this.positionCodec.setBase(vector3d);
                 }
                 if (rot) {
-                    this.lastSentYRot = l;
-                    this.lastSentXRot = k1;
+                    this.lastSentYRot = (byte) l;
+                    this.lastSentXRot = (byte) k1;
                 }
                 this.wasRiding = false;
             }
             int j1 = Mth.floor(this.entity.getYHeadRot() * 256.0F / 360.0F);
             if (Math.abs(j1 - this.lastSentYHeadRot) >= 1) {
-                this.broadcast.accept(new ClientboundRotateHeadPacket(this.entity, (byte) j1));
-                this.lastSentYHeadRot = j1;
+                this.synchronizer.sendToTrackingPlayers(new ClientboundRotateHeadPacket(this.entity, (byte) j1));
+                this.lastSentYHeadRot = (byte) j1;
             }
             this.entity.needsSync = false;
         }
@@ -247,11 +250,11 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 return;
             }
             this.entity.hurtMarked = false;
-            this.broadcastAndSend(new ClientboundSetEntityMotionPacket(this.entity));
+            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityMotionPacket(this.entity));
         }
     }
 
-    @Inject(method = "sendDirtyEntityData", locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerEntity;broadcastAndSend(Lnet/minecraft/network/protocol/Packet;)V"))
+    @Inject(method = "sendDirtyEntityData", locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerEntity$Synchronizer;sendToTrackingPlayersAndSelf(Lnet/minecraft/network/protocol/Packet;)V"))
     private void arclight$sendScaledHealth(CallbackInfo ci, SynchedEntityData entitydatamanager, List<SynchedEntityData.DataValue<?>> list, Set<AttributeInstance> set) {
         if (this.entity instanceof ServerPlayerBridge player) {
             ((ServerPlayerBridge) player).bridge$getBukkitEntity().injectScaledMaxHealth(set, false);

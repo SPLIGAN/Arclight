@@ -15,7 +15,10 @@ import net.minecraft.server.level.Ticket;
 import net.minecraft.server.level.TicketType;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.TicketStorage;
+import net.minecraft.world.level.gamerules.GameRules;
 import org.bukkit.Chunk;
+import org.bukkit.GameRule;
+import org.bukkit.craftbukkit.CraftGameRule;
 import org.bukkit.craftbukkit.CraftWorld;
 import org.bukkit.plugin.Plugin;
 import org.spongepowered.asm.mixin.Final;
@@ -46,6 +49,31 @@ public abstract class CraftWorldMixin {
     @Overwrite(remap = false)
     public File getWorldFolder() {
         return ((ServerLevelBridge) this.world).bridge$getConvertable().getDimensionPath(this.world.dimension()).toFile();
+    }
+
+    /**
+     * @author IzzelAliz
+     * @reason CraftBukkit 26.1 calls {@code GameRules.set(..., ServerLevel)}; NeoForge only has {@code MinecraftServer}.
+     */
+    @Overwrite(remap = false)
+    public void setPVP(boolean pvp) {
+        this.world.getGameRules().set(GameRules.PVP, pvp, this.world.getServer());
+    }
+
+    /**
+     * @author IzzelAliz
+     * @reason Same {@code GameRules.set} signature mismatch as {@link #setPVP(boolean)}.
+     */
+    @Overwrite(remap = false)
+    public <T> boolean setGameRule(GameRule<T> rule, T newValue) {
+        Preconditions.checkArgument(rule != null, "GameRule cannot be null");
+        Preconditions.checkArgument(newValue != null, "GameRule value cannot be null");
+        if (!rule.getType().equals(newValue.getClass())) {
+            return false;
+        }
+        net.minecraft.world.level.gamerules.GameRule<T> nms = CraftGameRule.bukkitToMinecraft(rule);
+        this.world.getGameRules().set(nms, newValue, this.world.getServer());
+        return true;
     }
 
     private TicketStorage arclight$ticketStorage() {

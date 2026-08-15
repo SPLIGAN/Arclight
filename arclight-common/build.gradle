@@ -31,6 +31,8 @@ dependencies {
     implementation libs.specialsource
     implementation libs.log4j.jul
     implementation libs.bungeecord.chat
+    implementation libs.bungeecord.dialog
+    implementation libs.bungeecord.serializer
     implementation libs.mysql.connectorj
     implementation libs.snakeyaml
 

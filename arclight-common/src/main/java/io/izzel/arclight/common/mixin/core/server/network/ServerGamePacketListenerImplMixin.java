@@ -77,6 +77,7 @@ import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.minecraft.server.players.PlayerList;
 import net.minecraft.util.FutureChain;
 import net.minecraft.util.Mth;
+import net.minecraft.util.TickThrottler;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.effect.MobEffects;
@@ -198,8 +199,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
     @Shadow private double lastGoodZ;
     @Shadow private boolean clientIsFloating;
     @Shadow private int awaitingTeleport;
-    @Shadow private int chatSpamTickCount;
-    @Shadow private int dropSpamTickCount;
+    @Shadow @Final private TickThrottler dropSpamThrottler;
     @Shadow protected abstract boolean noBlocksAround(Entity p_241162_1_);
     @Shadow private static double clampHorizontal(double p_143610_) { return 0; }
     @Shadow private static double clampVertical(double p_143654_) { return 0; }
@@ -212,11 +212,11 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
     @Shadow protected abstract void detectRateSpam();
     @Shadow protected abstract PlayerChatMessage getSignedMessage(ServerboundChatPacket p_251061_, LastSeenMessages p_250566_) throws SignedMessageChain.DecodeException;
     @Shadow protected abstract void handleMessageDecodeFailure(SignedMessageChain.DecodeException p_252068_);
-    @Shadow protected abstract boolean isPlayerCollidingWithAnythingNew(LevelReader p_289008_, AABB p_288986_, double p_288990_, double p_288991_, double p_288967_);
+    @Shadow protected abstract boolean isEntityCollidingWithAnythingNew(LevelReader p_289008_, Entity p_entity, AABB p_288986_, double p_288990_, double p_288991_, double p_288967_);
     @Shadow protected abstract boolean updateAwaitingTeleport();
     @Shadow protected abstract Filterable<String> filterableFromOutgoing(FilteredText filteredText);
     @Shadow protected abstract Optional<LastSeenMessages> unpackAndApplyLastSeen(LastSeenMessages.Update update);
-    @Shadow protected abstract void tryHandleChat(String string, Runnable runnable);
+    @Shadow protected abstract void tryHandleChat(String string, boolean unsigned, Runnable runnable);
     @Shadow protected abstract <S> Map<String, PlayerChatMessage> collectSignedArguments(ServerboundChatCommandSignedPacket serverboundChatCommandSignedPacket, SignableCommand<S> signableCommand, LastSeenMessages lastSeenMessages) throws SignedMessageChain.DecodeException;
     @Shadow public abstract void sendDisguisedChatMessage(Component component, ChatType.Bound bound);
     @Shadow public abstract void teleport(PositionMoveRotation positionMoveRotation, Set<Relative> relatives);
@@ -636,7 +636,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
                                 LOGGER.warn("{} moved wrongly!", this.player.getName().getString());
                             }
 
-                            if (!this.player.noPhysics && !this.player.isSleeping() && (flag1 && worldserver.noCollision(this.player, axisalignedbb) || this.isPlayerCollidingWithAnythingNew(worldserver, axisalignedbb, d0, d1, d2))) {
+                            if (!this.player.noPhysics && !this.player.isSleeping() && (flag1 && worldserver.noCollision(this.player, axisalignedbb) || this.isEntityCollidingWithAnythingNew(worldserver, this.player, axisalignedbb, d0, d1, d2))) {
                                 this.bridge$pushNoTeleportEvent();
                                 this.teleport(new PositionMoveRotation(new Vec3(d3, d4, d5), Vec3.ZERO, f, f1), Collections.emptySet()); // CraftBukkit - SPIGOT-1807: Don't call teleport event, when the client thinks the player is falling, because the chunks are not loaded on the client yet.
                                 this.player.doCheckFallDamage(this.player.getX() - d3, this.player.getY() - d4, this.player.getZ() - d5, packetplayinflying.isOnGround());
@@ -940,9 +940,9 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
         }
     }
 
-    @Decorate(method = "handleChat", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;tryHandleChat(Ljava/lang/String;Ljava/lang/Runnable;)V"))
-    private void arclight$wrapChatInPlace(ServerGamePacketListenerImpl instance, String string, Runnable runnable) throws Throwable {
-        DecorationOps.callsite().invoke(instance, string, (Runnable) RunnableInPlace.wrap(runnable));
+    @Decorate(method = "handleChat", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/network/ServerGamePacketListenerImpl;tryHandleChat(Ljava/lang/String;ZLjava/lang/Runnable;)V"))
+    private void arclight$wrapChatInPlace(ServerGamePacketListenerImpl instance, String string, boolean unsigned, Runnable runnable) throws Throwable {
+        DecorationOps.callsite().invoke(instance, string, unsigned, (Runnable) RunnableInPlace.wrap(runnable));
     }
 
     // InitAuther97: don't want to pollute BlockableEventLoop with instanceof check for very rare usages.
@@ -1021,7 +1021,7 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
     }
 
     @Inject(method = "tryHandleChat", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/server/level/ServerPlayer;getChatVisibility()Lnet/minecraft/world/entity/player/ChatVisiblity;"))
-    private void arclight$deadMenTellNoTales(String string, Runnable runnable, CallbackInfo ci) {
+    private void arclight$deadMenTellNoTales(String string, boolean unsigned, Runnable runnable, CallbackInfo ci) {
         if (this.player.isRemoved()) {
             this.send(new ClientboundSystemChatPacket(Component.translatable("chat.disabled.options").withStyle(ChatFormatting.RED), false));
             ci.cancel();
@@ -1621,8 +1621,8 @@ public abstract class ServerGamePacketListenerImplMixin extends ServerCommonPack
             if (flag2 && flag3) {
                 this.player.inventoryMenu.getSlot(packetplayinsetcreativeslot.slotNum()).setByPlayer(itemstack);
                 this.player.inventoryMenu.broadcastChanges();
-            } else if (flag && flag3 && this.dropSpamTickCount < 200) {
-                this.dropSpamTickCount += 20;
+            } else if (flag && flag3 && this.dropSpamThrottler.isUnderThreshold()) {
+                this.dropSpamThrottler.increment();
                 this.player.drop(itemstack, true);
             }
         }

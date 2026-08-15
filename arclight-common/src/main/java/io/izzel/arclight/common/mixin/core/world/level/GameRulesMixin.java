@@ -28,6 +28,14 @@ public abstract class GameRulesMixin implements GameRulesBridge {
 
     @Shadow public abstract <T> void set(GameRule<T> rule, T value, MinecraftServer server);
 
+    /**
+     * CraftBukkit 26.1 calls {@code set(GameRule, T, ServerLevel)} (per-world rules).
+     * Vanilla / NeoForge only has {@code set(GameRule, T, MinecraftServer)}.
+     */
+    public <T> void set(GameRule<T> rule, T value, ServerLevel level) {
+        this.set(rule, value, level != null ? level.getServer() : null);
+    }
+
     @Unique
     public void assignFrom(GameRules source, @Nullable ServerLevel level) {
         MinecraftServer server = level != null ? level.getServer() : null;
@@ -49,7 +57,7 @@ public abstract class GameRulesMixin implements GameRulesBridge {
         return this.availableRules().collect(Collectors.toSet());
     }
 
-    @Inject(method = "set", at = @At("RETURN"))
+    @Inject(method = "set(Lnet/minecraft/world/level/gamerules/GameRule;Ljava/lang/Object;Lnet/minecraft/server/MinecraftServer;)V", at = @At("RETURN"))
     private <T> void arclight$perWorldCallback(GameRule<T> rule, T value, MinecraftServer server, CallbackInfo ci) {
         if (server == null) {
             return;

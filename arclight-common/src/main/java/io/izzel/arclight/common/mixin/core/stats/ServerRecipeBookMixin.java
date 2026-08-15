@@ -25,8 +25,8 @@ public abstract class ServerRecipeBookMixin extends RecipeBook {
     @Shadow protected Set<ResourceKey<Recipe<?>>> known;
     // @formatter:on
 
-    @ModifyVariable(method = "addRecipes", at = @At("HEAD"), argsOnly = true, index = 0)
-    private Collection<RecipeHolder<?>> arclight$filterRecipes(Collection<RecipeHolder<?>> recipes, ServerPlayer player) {
+    @ModifyVariable(method = "addRecipes", at = @At("HEAD"), argsOnly = true, index = 1)
+    private Collection<RecipeHolder<?>> arclight$filterRecipes(Collection<RecipeHolder<?>> recipes, Collection<RecipeHolder<?>> incoming, ServerPlayer player) {
         return recipes.stream().filter(holder -> {
             if (holder.value().isSpecial() || this.known.contains(holder.id())) {
                 return true;

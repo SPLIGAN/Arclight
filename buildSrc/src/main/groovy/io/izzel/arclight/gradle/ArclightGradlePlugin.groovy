@@ -19,6 +19,8 @@ import java.nio.file.Path
 
 class ArclightGradlePlugin implements Plugin<Project> {
 
+    private static final Object SETUP_LOCK = new Object()
+
     @Override
     void apply(Project project) {
         def arclight = project.extensions.create('arclight', ArclightExtension, project)
@@ -27,6 +29,12 @@ class ArclightGradlePlugin implements Plugin<Project> {
         project.repositories.maven {
             name = 'Arclight Spigot Repo'
             url = arclightRepo
+            // File repo only has a POM + classified jars; skip Gradle Module Metadata probes.
+            metadataSources {
+                mavenPom()
+                artifact()
+                ignoreGradleMetadataRedirection()
+            }
         }
 
         def mappingsDir = arclight.cacheDir.resolve('arclight_cache/mappings')
@@ -54,7 +62,29 @@ class ArclightGradlePlugin implements Plugin<Project> {
             project.tasks.build.dependsOn('relocateCraftBukkit')
         }
 
+        // Loom resolves compile deps in afterEvaluate *before* later afterEvaluate
+        // callbacks. Generate the local Maven artifact on first resolve (and as a
+        // fallback after evaluation) so :arclight-common can see it.
+        project.configurations.configureEach { configuration ->
+            configuration.incoming.beforeResolve {
+                setupSpigotOnce(project, arclightRepo)
+            }
+        }
         project.afterEvaluate {
+            setupSpigotOnce(project, arclightRepo)
+        }
+    }
+
+    private static void setupSpigotOnce(Project project, Path arclightRepo) {
+        def arclight = project.extensions.findByName('arclight') as ArclightExtension
+        if (arclight == null || !arclight.mcVersion) {
+            return
+        }
+        synchronized (SETUP_LOCK) {
+            if (project.rootProject.extensions.extraProperties.has('arclightSpigotSetupDone')) {
+                return
+            }
+            project.rootProject.extensions.extraProperties.set('arclightSpigotSetupDone', true)
             setupSpigot(project, arclightRepo)
         }
     }
