@@ -114,7 +114,37 @@
 - **Illager/Bee**: `io.izzel.arclight.common.mod.nms.*` へ移行（JPMS-01 完了・`package net.minecraft` ゼロ化）
 - **arclight-common/build.gradle**: `sponge-mixin` 0.17.3 AP classpath、**既定 `-proc:none`**（`-PenableMixinAp` で AP 有効化）
 
-### 0.3 次の作業（優先順）
+### 0.3 ギャップ表（2026-09 再監査）
+
+公式基準: [NeoForged 26.1 primer](https://docs.neoforged.net/primer/docs/26.1/) / Mojang 26.1・26.1.2 / Transfer Rework / Fabric 26.1 / Spigot 26.1 告知。  
+ピン実測: MC `26.1.2` / NeoForge `26.1.2.103` / Forge `26.1.2-64.0.8` / Fabric API `0.150.0+26.1.2` / Spigot reversion `4628` / Java `25`。
+
+| 項目 | 状態 | 根拠 |
+|------|------|------|
+| バージョンピン / Java 25 / no-remap | **反映済み** | `gradle/libs.versions.toml` |
+| CraftBukkit リビジョンサブパッケージ廃止 | **反映済み** | `org.bukkit.craftbukkit.*` |
+| AW namespace `official` | **反映済み** | `arclight.accesswidener` |
+| `# INVALID-26.1.2` 死蔵 AW | **反映済み（2026-09）** | コメント行 167 件削除 |
+| Avatar 階層 mixin | **反映済み** | `AvatarMixin` / NeoForge / Vanilla |
+| `setItemSlot` 3-arg（NeoForge 再帰） | **反映済み** | `LivingEntityMixin` が NF 本体と同等実装 |
+| Transfer `ResourceHandler` hopper hooks | **反映済み（2026-09 smoke）** | `VanillaInventoryCodeHooksMixin` Decorate 引数順修正。ホッパー tick で `CraftChest` が欠落 Spigot `DoubleInventory` を参照してクラッシュ → `CraftChestMixin` + `ChestBlockDoubleInventoryHacks` を 26.1 `CompoundContainer`/`ChestBlock$2$1` へ |
+| NeoForge `dropperInsertHook` | **該当なし** | 26.1.2.103 の `VanillaInventoryCodeHooks` にメソッド無し（insert/extract/getEntity のみ）。ディスペンサーは vanilla `DispenserBlockMixin` 側 |
+| `SavedDataStorage` accessor + Optional unwrap | **反映済み** | `SavedDataStorageAccessor` / EntityCallbacks |
+| `PlayerSpawnFinder` Invoker 登録 | **反映済み** | `mixins.arclight.core.json` |
+| Fabric/Vanilla damage `hurt`→`hurtServer` | **反映済み（2026-09）** | `LivingEntityMixin_Vanilla` / `PlayerMixin_Vanilla` |
+| Villager AI mixin 記述子 `npc.Villager`→`npc.villager.Villager` | **反映済み（2026-09）** | `HarvestFarmlandMixin`（common/NF/Forge）+ `VillagerMakeLoveMixin`。参加後チャンク生成で発火していた |
+| Craft `getHandle().inventory` JPMS（Nautilus/Pillager） | **反映済み（2026-09）** | despawn→`EntityCallbacks` cleanup で `CraftAbstractNautilus.getInventory()` が `IllegalAccessError`。AW+AT に `AbstractNautilus.inventory`/`createInventory` と `Pillager.inventory` を追加（Horse/Piglin と同パターン）。Craft 側 field access はこの4種のみ |
+| `PortalShape` 26.1.2（level フィールド廃止） | **反映済み（2026-09）** | `createPortalBlocks(LevelAccessor)` + 静的フレーム計測。ThreadLocal キャプチャ。`@Decorate`+`@Local` は static で `methodNode.parameters` NPE のため禁止し Y 差分で j 算出。force-load 失敗は起動中断 |
+| `handleInteract` Bukkit イベントのスレッド | **反映済み（2026-09）** | `ServerGamePacketListenerImpl_HandlerMixin` が `@At(HEAD)` で Netty スレッドから `PlayerInteractAtEntityEvent` → kick。`ensureRunningOnSameThread` の AFTER へ移動（Spigot と同順）。`getEntityOrPart` 使用 |
+| `ServerEntity` 強制再同期パケット | **反映済み（2026-09）** | 26.1.2 は `ClientboundEntityPositionSyncPacket.of(entity)`。旧 `ClientboundTeleportEntityPacket` のままだとノックバック後に巻き戻り→土めり込み。overflow + `getRequiresPrecisePosition` 条件は維持 |
+| `MobSpawnType` / `DimensionDataStorage` 生参照 | **反映済み（ゼロ）** | Java ソースに残存なし（AW コメントのみだった） |
+| `TeleportTransition` / Clock / RespawnData | **反映済み** | `ArclightLevelHelper` + portal mixins |
+| Forge モジュールビルド | **ブロック中** | Loom `McpExecutor` NPE（B-14）— 既知 stale |
+| Phase 5 参加スモーク R-02〜 | **ブート+ホッパー合格（2026-09）** | force-load 全 ok（含 CraftChest）。chest→hopper→chest 転送確認。サーバ `*:25565` 稼働中。クライアント参加・切断は手元で最終確認 |
+
+**26.1 → 26.1.2:** 公式はプロトコル互換 hotfix（spectator-attack 等）。追加 API テーマなし。ピン `26.1.2.103` で充足。
+
+### 0.4 次の作業（優先順）
 
 1. **Phase 5 スモーク（R-02〜R-07）** — プレイヤー参加・Bukkit プラグイン・PDC/ItemMeta 検証（要 Minecraft クライアント）
 2. **B-14**: Forge — Architectury Loom `McpExecutor.execute` NPE（26.1 非難読化で MCP 0 ステップ時にクラッシュ。[loom#328](https://github.com/architectury/architectury-loom/issues/328) 修正待ち / ModDevGradle PoC）

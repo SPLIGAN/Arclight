@@ -14,7 +14,6 @@ import net.minecraft.network.Connection;
 import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.DisconnectionDetails;
 import net.minecraft.network.PacketListener;
-import net.minecraft.network.PacketSendListener;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketUtils;
@@ -29,6 +28,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerCommonPacketListenerImpl;
 import net.minecraft.util.StringUtil;
+import io.netty.channel.ChannelFutureListener;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.craftbukkit.CraftServer;
@@ -138,8 +138,8 @@ public abstract class ServerCommonPacketListenerImplMixin implements ServerCommo
         disconnect(s);
     }
 
-    @Decorate(method = "disconnect(Lnet/minecraft/network/DisconnectionDetails;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/Connection;send(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketSendListener;)V"))
-    private void arclight$kickEvent(Connection instance, Packet<?> packet, PacketSendListener packetSendListener, DisconnectionDetails disconnectionDetails) throws Throwable {
+    @Decorate(method = "disconnect(Lnet/minecraft/network/DisconnectionDetails;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/network/Connection;send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V"))
+    private void arclight$kickEvent(Connection instance, Packet<?> packet, ChannelFutureListener packetSendListener, DisconnectionDetails disconnectionDetails) throws Throwable {
         if (this.processedDisconnect) {
             DecorationOps.cancel().invoke();
             return;
@@ -181,8 +181,9 @@ public abstract class ServerCommonPacketListenerImplMixin implements ServerCommo
         this.onDisconnect(disconnectionDetails);
     }
 
-    @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketSendListener;)V", cancellable = true, at = @At("HEAD"))
-    private void arclight$updateCompassTarget(Packet<?> packetIn, PacketSendListener futureListeners, CallbackInfo ci) {
+    // 26.1: PacketSendListener overload replaced by ChannelFutureListener.
+    @Inject(method = "send(Lnet/minecraft/network/protocol/Packet;Lio/netty/channel/ChannelFutureListener;)V", cancellable = true, at = @At("HEAD"))
+    private void arclight$updateCompassTarget(Packet<?> packetIn, ChannelFutureListener futureListeners, CallbackInfo ci) {
         if (packetIn == null || processedDisconnect) {
             ci.cancel();
             return;

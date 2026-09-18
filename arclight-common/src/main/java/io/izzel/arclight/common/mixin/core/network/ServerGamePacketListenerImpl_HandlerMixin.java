@@ -40,25 +40,25 @@ public class ServerGamePacketListenerImpl_HandlerMixin {
 
     @Shadow public ServerPlayer player;
 
-    @Inject(method = "handleInteract", at = @At("HEAD"), cancellable = true)
+    /**
+     * Must run after PacketUtils.ensureRunningOnSameThread — injecting at HEAD fires Bukkit events
+     * on the Netty thread (IllegalStateException / kick) and trips AsyncCatcher on getEntity.
+     */
+    @Inject(method = "handleInteract", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/network/protocol/PacketUtils;ensureRunningOnSameThread(Lnet/minecraft/network/protocol/Packet;Lnet/minecraft/network/PacketListener;Lnet/minecraft/server/level/ServerLevel;)V"))
     private void arclight$playerInteractEvent(ServerboundInteractPacket packet, CallbackInfo ci) {
-        Entity entity = this.player.level().getEntity(packet.entityId());
+        Entity entity = this.player.level().getEntityOrPart(packet.entityId());
         if (entity == null) {
             return;
         }
         InteractionHand hand = packet.hand();
         Vec3 interactVec = packet.location();
-        PlayerInteractEntityEvent event;
-        if (interactVec != null) {
-            event = new PlayerInteractAtEntityEvent((Player) ((ServerPlayerBridge) this.player).bridge$getBukkitEntity(),
-                ((EntityBridge) entity).bridge$getBukkitEntity(),
-                new org.bukkit.util.Vector(interactVec.x, interactVec.y, interactVec.z),
-                hand == InteractionHand.OFF_HAND ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND);
-        } else {
-            event = new PlayerInteractEntityEvent((Player) ((ServerPlayerBridge) this.player).bridge$getBukkitEntity(),
-                ((EntityBridge) entity).bridge$getBukkitEntity(),
-                hand == InteractionHand.OFF_HAND ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND);
-        }
+        // Spigot 26.1.2 always fires PlayerInteractAtEntityEvent (location is part of the packet record).
+        PlayerInteractEntityEvent event = new PlayerInteractAtEntityEvent(
+            (Player) ((ServerPlayerBridge) this.player).bridge$getBukkitEntity(),
+            ((EntityBridge) entity).bridge$getBukkitEntity(),
+            new org.bukkit.util.Vector(interactVec.x, interactVec.y, interactVec.z),
+            hand == InteractionHand.OFF_HAND ? EquipmentSlot.OFF_HAND : EquipmentSlot.HAND);
+
         ItemStack itemInHand = this.player.getItemInHand(hand);
         boolean triggerLeashUpdate = !itemInHand.isEmpty() && itemInHand.getItem() == Items.LEAD && entity instanceof Mob;
         Item origItem = ArclightInventoryHelper.getSelectedItemType(this.player.getInventory());

@@ -3,19 +3,17 @@ package io.izzel.arclight.common.mixin.core.server.network;
 import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.properties.Property;
 import io.izzel.arclight.common.bridge.core.network.ConnectionBridge;
+import io.izzel.arclight.common.bridge.core.server.MinecraftServerBridge;
 import io.izzel.arclight.common.bridge.core.server.network.ServerCommonPacketListenerImplBridge;
 import io.izzel.arclight.common.bridge.core.server.network.ServerLoginPacketListenerImplBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerPlayerBridge;
 import io.izzel.arclight.common.bridge.core.server.players.PlayerListBridge;
 import io.izzel.arclight.common.mod.util.VelocitySupport;
-import net.minecraft.DefaultUncaughtExceptionHandler;
 import net.minecraft.util.Util;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.network.Connection;
-import net.minecraft.network.ConnectionProtocol;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.PacketUtils;
 import net.minecraft.network.protocol.cookie.ServerboundCookieResponsePacket;
 import net.minecraft.network.protocol.login.ClientboundCustomQueryPacket;
@@ -27,14 +25,18 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.network.CommonListenerCookie;
 import net.minecraft.server.network.ServerConfigurationPacketListenerImpl;
 import net.minecraft.server.network.ServerLoginPacketListenerImpl;
+import net.minecraft.server.players.NameAndId;
 import net.minecraft.server.players.PlayerList;
+import org.bukkit.craftbukkit.CraftServer;
 import org.bukkit.craftbukkit.entity.CraftPlayer;
+import org.bukkit.craftbukkit.util.Waitable;
+import org.bukkit.event.player.AsyncPlayerPreLoginEvent;
+import org.bukkit.event.player.PlayerPreLoginEvent;
 import org.slf4j.Logger;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
-import org.spongepowered.asm.mixin.gen.Invoker;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -42,6 +44,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.LocalCapture;
 
 import javax.annotation.Nullable;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.util.Objects;
@@ -63,8 +66,6 @@ public abstract class ServerLoginPacketListenerImplMixin implements ServerLoginP
     @Shadow @Final private byte[] challenge;
     @Shadow @Nullable private String requestedUsername;
     @Shadow abstract void startClientVerification(GameProfile p_301095_);
-    @Invoker("callPlayerPreLoginEvents")
-    protected abstract void arclight$callPlayerPreLoginEvents(GameProfile profile) throws Exception;
     @Shadow protected abstract boolean isPlayerAlreadyInWorld(GameProfile p_298499_);
     @Shadow @Nullable private GameProfile authenticatedProfile;
     @Shadow @Final private boolean transferred;
@@ -89,7 +90,8 @@ public abstract class ServerLoginPacketListenerImplMixin implements ServerLoginP
         bridge$disconnect(s);
     }
 
-    @Inject(method = "handleHello", cancellable = true, at = @At(value = "NEW", target = "java/lang/Thread", shift = At.Shift.BEFORE))
+    // 26.1 dropped the offline-auth Thread; intercept createOfflineProfile instead.
+    @Inject(method = "handleHello", cancellable = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/core/UUIDUtil;createOfflineProfile(Ljava/lang/String;)Lcom/mojang/authlib/GameProfile;"))
     private void arclight$velocityHello(ServerboundHelloPacket packet, CallbackInfo ci) {
         if ((!this.server.usesAuthentication() || this.connection.isMemoryConnection()) && VelocitySupport.isEnabled()) {
             this.arclight$velocityLoginId = ThreadLocalRandom.current().nextInt();
@@ -119,20 +121,87 @@ public abstract class ServerLoginPacketListenerImplMixin implements ServerLoginP
         return gameProfile;
     }
 
-    @Redirect(method = "verifyLoginAndFinishConnectionSetup", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;canPlayerLogin(Lnet/minecraft/server/network/ServerLoginPacketListenerImpl;Lcom/mojang/authlib/GameProfile;)Lnet/minecraft/server/level/ServerPlayer;"))
-    private ServerPlayer arclight$canLogin(PlayerList instance, ServerLoginPacketListenerImpl listener, GameProfile gameProfile) {
-        SocketAddress socketAddress = this.connection.getRemoteAddress();
-        return ((PlayerListBridge) instance).bridge$canPlayerLogin(socketAddress, gameProfile, listener);
+    @Redirect(method = "verifyLoginAndFinishConnectionSetup", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;canPlayerLogin(Ljava/net/SocketAddress;Lnet/minecraft/server/players/NameAndId;)Lnet/minecraft/network/chat/Component;"))
+    private Component arclight$canLogin(PlayerList instance, SocketAddress socketAddress, NameAndId nameAndId) {
+        if (this.player == null) {
+            this.player = ((PlayerListBridge) instance).bridge$canPlayerLogin(socketAddress, Objects.requireNonNull(this.authenticatedProfile), (ServerLoginPacketListenerImpl) (Object) this);
+        }
+        return null;
     }
 
-    @Redirect(method = "postCookies", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;disconnectAllPlayersWithProfile(Ljava/util/UUID;Lnet/minecraft/server/level/ServerPlayer;)Z"))
-    private boolean arclight$skipKick(PlayerList instance, UUID uuid, ServerPlayer serverPlayer) {
+    @Inject(method = "verifyLoginAndFinishConnectionSetup", cancellable = true, at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/server/players/PlayerList;canPlayerLogin(Ljava/net/SocketAddress;Lnet/minecraft/server/players/NameAndId;)Lnet/minecraft/network/chat/Component;"))
+    private void arclight$returnIfFail(GameProfile profile, CallbackInfo ci) {
+        if (this.player == null) {
+            ci.cancel();
+        } else if (((ServerPlayerBridge) this.player).bridge$getBukkitEntity().isAwaitingCookies()) {
+            // Stay in VERIFYING; tick will retry until cookies are complete (no WAITING_FOR_COOKIES on vanilla).
+            ci.cancel();
+        }
+    }
+
+    @Redirect(method = "verifyLoginAndFinishConnectionSetup", at = @At(value = "INVOKE", target = "Lnet/minecraft/server/players/PlayerList;disconnectAllPlayersWithProfile(Ljava/util/UUID;)Z"))
+    private boolean arclight$skipKick(PlayerList instance, UUID uuid) {
         return this.isPlayerAlreadyInWorld(Objects.requireNonNull(this.authenticatedProfile));
     }
 
     @Inject(method = "handleLoginAcknowledgement", locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", target = "Lnet/minecraft/network/Connection;setupInboundProtocol(Lnet/minecraft/network/ProtocolInfo;Lnet/minecraft/network/PacketListener;)V"))
     private void arclight$setPlayer(ServerboundLoginAcknowledgedPacket p_298815_, CallbackInfo ci, CommonListenerCookie cookie, ServerConfigurationPacketListenerImpl listener) {
         ((ServerCommonPacketListenerImplBridge) listener).bridge$setPlayer(this.player);
+    }
+
+    @Inject(method = "handleCookieResponse", cancellable = true, at = @At("HEAD"))
+    private void arclight$cookieResponse(ServerboundCookieResponsePacket packet, CallbackInfo ci) {
+        PacketUtils.ensureRunningOnSameThread(packet, (ServerLoginPacketListenerImpl) (Object) this, this.server.packetProcessor());
+        if (this.player != null && ((ServerPlayerBridge) this.player).bridge$getBukkitEntity().handleCookieResponse(packet)) {
+            ci.cancel();
+        }
+    }
+
+    @Unique
+    private void arclight$callPlayerPreLoginEvents(GameProfile profile) throws Exception {
+        String playerName = profile.name();
+        InetAddress address = ((InetSocketAddress) this.connection.getRemoteAddress()).getAddress();
+        UUID uniqueId = profile.id();
+        CraftServer craftServer = ((MinecraftServerBridge) this.server).bridge$getServer();
+
+        AsyncPlayerPreLoginEvent asyncEvent = new AsyncPlayerPreLoginEvent(playerName, address, uniqueId, this.transferred);
+        craftServer.getPluginManager().callEvent(asyncEvent);
+
+        if (PlayerPreLoginEvent.getHandlerList().getRegisteredListeners().length != 0) {
+            PlayerPreLoginEvent event = new PlayerPreLoginEvent(playerName, address, uniqueId);
+            if (asyncEvent.getResult() != PlayerPreLoginEvent.Result.ALLOWED) {
+                event.disallow(asyncEvent.getResult(), asyncEvent.getKickMessage());
+            }
+            Waitable<PlayerPreLoginEvent.Result> waitable = new Waitable<>() {
+                @Override
+                protected PlayerPreLoginEvent.Result evaluate() {
+                    craftServer.getPluginManager().callEvent(event);
+                    return event.getResult();
+                }
+            };
+            ((MinecraftServerBridge) this.server).bridge$queuedProcess(waitable);
+            if (waitable.get() != PlayerPreLoginEvent.Result.ALLOWED) {
+                this.disconnect(event.getKickMessage());
+            }
+        } else if (asyncEvent.getLoginResult() != AsyncPlayerPreLoginEvent.Result.ALLOWED) {
+            this.disconnect(asyncEvent.getKickMessage());
+        }
+    }
+
+    @Inject(method = "startClientVerification", at = @At("HEAD"), cancellable = true)
+    private void arclight$preLoginEvents(GameProfile profile, CallbackInfo ci) {
+        // Vanilla has no CraftBukkit callPlayerPreLoginEvents; fire Bukkit events here for all auth paths.
+        // Velocity already calls arclight$callPlayerPreLoginEvents before startClientVerification — skip duplicate.
+        if (this.arclight$velocityLoginId != -1 && VelocitySupport.isEnabled()) {
+            return;
+        }
+        try {
+            this.arclight$callPlayerPreLoginEvents(profile);
+        } catch (Exception ex) {
+            this.disconnect(Component.translatable("multiplayer.disconnect.unverified_username"));
+            LOGGER.warn("Exception verifying {}", profile.name(), ex);
+            ci.cancel();
+        }
     }
 
     /*

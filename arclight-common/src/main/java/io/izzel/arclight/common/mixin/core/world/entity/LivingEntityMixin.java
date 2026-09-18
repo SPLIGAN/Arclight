@@ -901,12 +901,22 @@ public abstract class LivingEntityMixin extends EntityMixin implements LivingEnt
         return CraftEventFactory.callArrowBodyCountChangeEvent((LivingEntity) (Object) this, this.getArrowCount(), newCount, reset).isCancelled();
     }
 
+    // NeoForge patches LivingEntity with setItemSlot(slot, stack, silent) and makes the
+    // 2-arg overload call it. The old Bukkit stub (3-arg -> 2-arg) therefore recurses forever.
+    // Match NeoForge's body so silent equip works and both loaders stay consistent.
     public void setItemSlot(EquipmentSlot slot, ItemStack stack, boolean silent) {
-        this.setItemSlot(slot, stack);
+        ItemStack previous = this.equipment.set(slot, stack);
+        if (!silent) {
+            this.onEquipItem(slot, previous, stack);
+        }
     }
 
     public void onEquipItem(EquipmentSlot slot, ItemStack stack, ItemStack stack1, boolean silent) {
-        this.onEquipItem(slot, stack, stack1);
+        if (silent) {
+            this.equipEventAndSound(slot, stack, stack1, true);
+        } else {
+            this.onEquipItem(slot, stack, stack1);
+        }
     }
 
     @Override

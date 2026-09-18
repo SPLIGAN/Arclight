@@ -6,7 +6,7 @@ import io.izzel.arclight.common.mod.util.ArclightDamageContainer;
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
-import io.izzel.arclight.neoforge.mixin.core.world.entity.LivingEntityMixin_NeoForge;
+import io.izzel.arclight.neoforge.mixin.core.world.entity.AvatarMixin_NeoForge;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.damagesource.DamageSource;
@@ -21,7 +21,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(Player.class)
-public abstract class PlayerMixin_NeoForge extends LivingEntityMixin_NeoForge implements PlayerBridge, IPlayerExtension {
+public abstract class PlayerMixin_NeoForge extends AvatarMixin_NeoForge implements PlayerBridge, IPlayerExtension {
 
     // 26.1 NeoForge already fires onEntityIncomingDamage in LivingEntity.hurtServer
     // and onPlayerAttackTarget at the head of Player.attack — do not re-inject.

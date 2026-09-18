@@ -12,6 +12,7 @@ import java.util.Optional;
 @Mixin(SavedDataStorage.class)
 public interface SavedDataStorageAccessor {
 
-    @Accessor
-    Map<SavedDataType<?>, Optional<SavedData>> cache();
+    // Explicit name required: Mixin cannot inflect field "cache" from method "cache()".
+    @Accessor("cache")
+    Map<SavedDataType<?>, Optional<SavedData>> arclight$getCache();
 }

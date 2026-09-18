@@ -27,4 +27,4 @@ public org/bukkit/craftbukkit/inventory/CraftMetaTropicalFishBucket/<init>(Lorg/
 public org/bukkit/craftbukkit/inventory/CraftMetaCrossbow/<init>(Lorg/bukkit/craftbukkit/inventory/CraftMetaItem;)V
 public org/bukkit/craftbukkit/inventory/CraftMetaSuspiciousStew/<init>(Lorg/bukkit/craftbukkit/inventory/CraftMetaItem;)V
 public org/spigotmc/ActivationRange$ActivationType/boundingBox
-public org/bukkit/craftbukkit/inventory/CraftMetaItem/<init>(Lnet/minecraft/nbt/CompoundTag;)V
+public org/bukkit/craftbukkit/inventory/CraftMetaItem/<init>(Lnet/minecraft/core/component/DataComponentPatch;)V

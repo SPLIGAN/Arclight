@@ -13,7 +13,7 @@ import io.izzel.arclight.common.bridge.core.world.IInventoryBridge;
 import io.izzel.arclight.common.bridge.core.world.food.FoodDataBridge;
 import io.izzel.arclight.common.bridge.core.world.level.WorldBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerLevelBridge;
-import io.izzel.arclight.common.mixin.core.world.entity.LivingEntityMixin;
+import io.izzel.arclight.common.mixin.core.world.entity.AvatarMixin;
 import io.izzel.arclight.common.mod.server.ArclightServer;
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
@@ -89,7 +89,7 @@ import javax.annotation.Nullable;
 import java.util.Optional;
 
 @Mixin(net.minecraft.world.entity.player.Player.class)
-public abstract class PlayerMixin extends LivingEntityMixin implements PlayerBridge {
+public abstract class PlayerMixin extends AvatarMixin implements PlayerBridge {
 
     // @formatter:off
     @Shadow public abstract String getScoreboardName();

@@ -445,6 +445,16 @@ public abstract class MinecraftServerMixin extends ReentrantBlockableEventLoop<T
         this.bridge$drainQueuedTasks();
     }
 
+    /**
+     * pause-when-empty skips {@link #tickChildren} and only runs {@code tickConnection}.
+     * NeoForge configuration (and other Arclight work) is queued via {@link #bridge$queuedProcess};
+     * drain it here so paused servers can still finish player login/config.
+     */
+    @Inject(method = "tickConnection", at = @At("RETURN"))
+    private void arclight$drainQueueWhilePaused(CallbackInfo ci) {
+        this.bridge$drainQueuedTasks();
+    }
+
     @Inject(method = "stopServer", at = @At(value = "INVOKE", shift = At.Shift.AFTER, target = "Lnet/minecraft/server/MinecraftServer;saveAllChunks(ZZZ)Z"))
     private void arclight$unloadLevel(CallbackInfo ci) {
         for (var serverLevel : this.getAllLevels()) {

@@ -1,33 +1,35 @@
 package io.izzel.arclight.common.mixin.vanilla.world.entity.player;
 
-import io.izzel.arclight.common.mixin.vanilla.world.entity.LivingEntityMixin_Vanilla;
+import io.izzel.arclight.common.mixin.vanilla.world.entity.AvatarMixin_Vanilla;
 import io.izzel.arclight.common.mod.util.ArclightCaptures;
 import io.izzel.arclight.common.mod.util.ArclightDamageContainer;
 import io.izzel.arclight.mixin.Decorate;
 import io.izzel.arclight.mixin.DecorationOps;
 import io.izzel.arclight.mixin.Local;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.damagesource.DamageSource;
-import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.player.Abilities;
 import net.minecraft.world.entity.player.Player;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+/**
+ * Fabric / vanilla-platform player damage for MC 26.1+.
+ * {@code actuallyHurt} now takes {@link ServerLevel} as the first argument.
+ */
 @Mixin(Player.class)
-public abstract class PlayerMixin_Vanilla extends LivingEntityMixin_Vanilla {
+public abstract class PlayerMixin_Vanilla extends AvatarMixin_Vanilla {
 
     @Decorate(method = "actuallyHurt", inject = true, at = @At("HEAD"))
-    private void arclight$vanilla$getEntityDamageEvent(DamageSource damageSource, float f, @Local(allocate = "arclightDamageContainer") ArclightDamageContainer container) throws Throwable {
+    private void arclight$vanilla$getEntityDamageEvent(ServerLevel level, DamageSource damageSource, float f, @Local(allocate = "arclightDamageContainer") ArclightDamageContainer container) throws Throwable {
         container = ArclightCaptures.getDamageContainer();
         DecorationOps.blackhole().invoke(container);
     }
 
-    @Decorate(method = "actuallyHurt", inject = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;getDamageAfterMagicAbsorb(Lnet/minecraft/world/damagesource/DamageSource;F)F"))
-    private void arclight$vanilla$postApplyArmor(DamageSource source, float original, @Local(allocate = "arclightDamageContainer") ArclightDamageContainer container) throws Throwable {
+    @Decorate(method = "actuallyHurt", inject = true, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/player/Player;getDamageAfterArmorAbsorb(Lnet/minecraft/world/damagesource/DamageSource;F)F"))
+    private void arclight$vanilla$postApplyArmor(ServerLevel level, DamageSource source, float original, @Local(allocate = "arclightDamageContainer") ArclightDamageContainer container) throws Throwable {
         original = container.calculateStage(EntityDamageEvent.DamageModifier.ARMOR, original);
         DecorationOps.blackhole().invoke(original);
     }
@@ -46,7 +48,7 @@ public abstract class PlayerMixin_Vanilla extends LivingEntityMixin_Vanilla {
     }
 
     @Inject(method = "actuallyHurt", at = @At("RETURN"))
-    private void arclight$vanilla$popEntityDamageEvent(DamageSource arg, float g, CallbackInfo ci) {
+    private void arclight$vanilla$popEntityDamageEvent(ServerLevel level, DamageSource arg, float g, CallbackInfo ci) {
         ArclightCaptures.popDamageContainer();
     }
 }

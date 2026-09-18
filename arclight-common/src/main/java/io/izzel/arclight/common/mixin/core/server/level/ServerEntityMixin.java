@@ -1,6 +1,5 @@
 package io.izzel.arclight.common.mixin.core.server.level;
 
-import io.izzel.arclight.common.bridge.core.entity.EntityBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerPlayerBridge;
 import io.izzel.arclight.common.bridge.core.server.level.ServerEntityBridge;
 import io.izzel.arclight.common.mod.ArclightConstants;
@@ -8,13 +7,14 @@ import io.izzel.arclight.common.mod.mixins.annotation.CreateConstructor;
 import io.izzel.arclight.common.mod.mixins.annotation.ShadowConstructor;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientGamePacketListener;
 import net.minecraft.network.protocol.game.ClientboundBundlePacket;
+import net.minecraft.network.protocol.game.ClientboundEntityPositionSyncPacket;
 import net.minecraft.network.protocol.game.ClientboundMoveEntityPacket;
 import net.minecraft.network.protocol.game.ClientboundProjectilePowerPacket;
 import net.minecraft.network.protocol.game.ClientboundRotateHeadPacket;
 import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.network.protocol.game.ClientboundSetPassengersPacket;
-import net.minecraft.network.protocol.game.ClientboundTeleportEntityPacket;
 import net.minecraft.network.protocol.game.VecDeltaCodec;
 import net.minecraft.network.syncher.SynchedEntityData;
 import net.minecraft.server.level.ServerEntity;
@@ -54,7 +54,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 @Mixin(ServerEntity.class)
 public abstract class ServerEntityMixin implements ServerEntityBridge {
@@ -62,7 +61,7 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     // @formatter:off
     @Shadow @Final private Entity entity;
     @Shadow private List<Entity> lastPassengers;
-    @Shadow @Final private Consumer<Packet<?>> broadcast;
+    @Shadow @Final private ServerEntity.Synchronizer synchronizer;
     @Shadow private int tickCount;
     @Shadow @Final private ServerLevel level;
     @Shadow protected abstract void sendDirtyEntityData();
@@ -72,13 +71,11 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     @Shadow private int teleportDelay;
     @Shadow private boolean wasOnGround;
     @Shadow @Final private boolean trackDelta;
-    @Shadow protected abstract void broadcastAndSend(Packet<?> packet);
     @Shadow @Nullable private List<SynchedEntityData.DataValue<?>> trackedDataValues;
-    @Shadow private static Stream<Entity> removedPassengers(List<Entity> p_277592_, List<Entity> p_277658_) { return null; }
-    @Shadow private int lastSentYRot;
-    @Shadow private int lastSentXRot;
+    @Shadow private byte lastSentYRot;
+    @Shadow private byte lastSentXRot;
     @Shadow private Vec3 lastSentMovement;
-    @Shadow private int lastSentYHeadRot;
+    @Shadow private byte lastSentYHeadRot;
     // @formatter:on
 
     private Set<ServerPlayerConnection> trackedPlayers;
@@ -86,20 +83,20 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
     @Unique private int lastUpdate, lastPosUpdate, lastMapUpdate;
 
     @Inject(method = "<init>", at = @At("RETURN"))
-    private void arclight$init(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer, CallbackInfo ci) {
+    private void arclight$init(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer, CallbackInfo ci) {
         trackedPlayers = new HashSet<>();
         lastTick = ArclightConstants.currentTick - 1;
         lastUpdate = lastPosUpdate = lastMapUpdate = -1;
     }
 
     @ShadowConstructor
-    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer) {
+    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer) {
         throw new NullPointerException();
     }
 
     @CreateConstructor
-    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, Consumer<Packet<?>> packetConsumer, Set<ServerPlayerConnection> set) {
-        arclight$constructor(serverWorld, entity, updateFrequency, sendVelocityUpdates, packetConsumer);
+    public void arclight$constructor(ServerLevel serverWorld, Entity entity, int updateFrequency, boolean sendVelocityUpdates, ServerEntity.Synchronizer synchronizer, Set<ServerPlayerConnection> set) {
+        arclight$constructor(serverWorld, entity, updateFrequency, sendVelocityUpdates, synchronizer);
         this.trackedPlayers = set;
     }
 
@@ -110,18 +107,19 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
 
     /**
      * @author IzzelAliz
-     * @reason
+     * @reason Spigot tick catch-up + PlayerVelocityEvent; adapted to 26.1 Synchronizer API.
      */
     @Overwrite
     public void sendChanges() {
+        this.entity.updateDataBeforeSync();
         List<Entity> list = this.entity.getPassengers();
         if (!list.equals(this.lastPassengers)) {
-            this.broadcastAndSend(new ClientboundSetPassengersPacket(this.entity));
-            removedPassengers(list, this.lastPassengers).forEach((p_289307_) -> {
-                if (p_289307_ instanceof ServerPlayer serverplayer1) {
+            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetPassengersPacket(this.entity));
+            for (Entity previous : this.lastPassengers) {
+                if (!list.contains(previous) && previous instanceof ServerPlayer serverplayer1) {
                     serverplayer1.connection.teleport(serverplayer1.getX(), serverplayer1.getY(), serverplayer1.getZ(), serverplayer1.getYRot(), serverplayer1.getXRot());
                 }
-            });
+            }
             this.lastPassengers = list;
         }
         int elapsedTicks = ArclightConstants.currentTick - this.lastTick;
@@ -149,11 +147,11 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
         }
         if (this.tickCount / this.updateInterval != this.lastUpdate || this.entity.needsSync || this.entity.getEntityData().isDirty()) {
             if (this.entity.isPassenger()) {
-                int i1 = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
-                int l1 = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
+                byte i1 = Mth.packDegrees(this.entity.getYRot());
+                byte l1 = Mth.packDegrees(this.entity.getXRot());
                 boolean flag2 = Math.abs(i1 - this.lastSentYRot) >= 1 || Math.abs(l1 - this.lastSentXRot) >= 1;
                 if (flag2) {
-                    this.broadcast.accept(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) i1, (byte) l1, this.entity.onGround()));
+                    this.synchronizer.sendToTrackingPlayers(new ClientboundMoveEntityPacket.Rot(this.entity.getId(), i1, l1, this.entity.onGround()));
                     this.lastSentYRot = i1;
                     this.lastSentXRot = l1;
                 }
@@ -162,8 +160,8 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 this.wasRiding = true;
             } else {
                 this.teleportDelay += elapsedTicks;
-                int l = Mth.floor(this.entity.getYRot() * 256.0F / 360.0F);
-                int k1 = Mth.floor(this.entity.getXRot() * 256.0F / 360.0F);
+                byte l = Mth.packDegrees(this.entity.getYRot());
+                byte k1 = Mth.packDegrees(this.entity.getXRot());
                 Vec3 vector3d = this.entity.trackingPosition();
                 boolean flag3 = this.positionCodec.delta(vector3d).lengthSqr() >= 7.62939453125E-6D;
                 Packet<?> ipacket1 = null;
@@ -174,24 +172,28 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 long i = this.positionCodec.encodeX(vector3d);
                 long j = this.positionCodec.encodeY(vector3d);
                 long k = this.positionCodec.encodeZ(vector3d);
-                boolean flag1 = i < -32768L || i > 32767L || j < -32768L || j > 32767L || k < -32768L || k > 32767L;
+                // 26.1.2: forced resync uses overflow OR getRequiresPrecisePosition + ClientboundEntityPositionSyncPacket
+                // (ClientboundTeleportEntityPacket here causes knockback rubber-band / sink into ground).
+                boolean flag1 = this.entity.getRequiresPrecisePosition()
+                    || i < -32768L || i > 32767L || j < -32768L || j > 32767L || k < -32768L || k > 32767L;
                 if (!flag1 && this.teleportDelay <= 400 && !this.wasRiding && this.wasOnGround == this.entity.onGround()) {
                     if ((!flag4 || !flag) && !(this.entity instanceof AbstractArrow)) {
                         if (flag4) {
                             ipacket1 = new ClientboundMoveEntityPacket.Pos(this.entity.getId(), (short) ((int) i), (short) ((int) j), (short) ((int) k), this.entity.onGround());
                             pos = true;
                         } else if (flag) {
-                            ipacket1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), (byte) l, (byte) k1, this.entity.onGround());
+                            ipacket1 = new ClientboundMoveEntityPacket.Rot(this.entity.getId(), l, k1, this.entity.onGround());
                             rot = true;
                         }
                     } else {
-                        ipacket1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) i), (short) ((int) j), (short) ((int) k), (byte) l, (byte) k1, this.entity.onGround());
+                        ipacket1 = new ClientboundMoveEntityPacket.PosRot(this.entity.getId(), (short) ((int) i), (short) ((int) j), (short) ((int) k), l, k1, this.entity.onGround());
                         pos = rot = true;
                     }
                 } else {
                     this.wasOnGround = this.entity.onGround();
                     this.teleportDelay = 0;
-                    ipacket1 = ClientboundTeleportEntityPacket.teleport(this.entity.getId(), net.minecraft.world.entity.PositionMoveRotation.of(this.entity), java.util.Set.of(), this.entity.onGround());
+                    this.entity.setRequiresPrecisePosition(false);
+                    ipacket1 = ClientboundEntityPositionSyncPacket.of(this.entity);
                     pos = rot = true;
                 }
                 if ((this.trackDelta || this.entity.needsSync || this.entity instanceof LivingEntity && ((LivingEntity) this.entity).isFallFlying()) && this.tickCount > 0) {
@@ -200,14 +202,14 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                     if (d0 > 1.0E-7D || d0 > 0.0D && vector3d1.lengthSqr() == 0.0D) {
                         this.lastSentMovement = vector3d1;
                         if ( this.entity instanceof AbstractHurtingProjectile entityfireball) {
-                            this.broadcast.accept(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
+                            this.synchronizer.sendToTrackingPlayers(new ClientboundBundlePacket(List.of(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement), new ClientboundProjectilePowerPacket(entityfireball.getId(), entityfireball.accelerationPower))));
                         } else {
-                            this.broadcast.accept(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
+                            this.synchronizer.sendToTrackingPlayers(new ClientboundSetEntityMotionPacket(this.entity.getId(), this.lastSentMovement));
                         }
                     }
                 }
                 if (ipacket1 != null) {
-                    this.broadcast.accept(ipacket1);
+                    this.synchronizer.sendToTrackingPlayers(arclight$asClientPacket(ipacket1));
                 }
                 this.sendDirtyEntityData();
                 if (pos) {
@@ -219,9 +221,9 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 }
                 this.wasRiding = false;
             }
-            int j1 = Mth.floor(this.entity.getYHeadRot() * 256.0F / 360.0F);
+            byte j1 = Mth.packDegrees(this.entity.getYHeadRot());
             if (Math.abs(j1 - this.lastSentYHeadRot) >= 1) {
-                this.broadcast.accept(new ClientboundRotateHeadPacket(this.entity, (byte) j1));
+                this.synchronizer.sendToTrackingPlayers(new ClientboundRotateHeadPacket(this.entity, j1));
                 this.lastSentYHeadRot = j1;
             }
             this.entity.needsSync = false;
@@ -247,14 +249,20 @@ public abstract class ServerEntityMixin implements ServerEntityBridge {
                 return;
             }
             this.entity.hurtMarked = false;
-            this.broadcastAndSend(new ClientboundSetEntityMotionPacket(this.entity));
+            this.synchronizer.sendToTrackingPlayersAndSelf(new ClientboundSetEntityMotionPacket(this.entity));
         }
     }
 
-    @Inject(method = "sendDirtyEntityData", locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerEntity;broadcastAndSend(Lnet/minecraft/network/protocol/Packet;)V"))
+    @SuppressWarnings("unchecked")
+    @Unique
+    private static Packet<? super ClientGamePacketListener> arclight$asClientPacket(Packet<?> packet) {
+        return (Packet<? super ClientGamePacketListener>) packet;
+    }
+
+    @Inject(method = "sendDirtyEntityData", locals = LocalCapture.CAPTURE_FAILHARD, at = @At(value = "INVOKE", ordinal = 1, target = "Lnet/minecraft/server/level/ServerEntity$Synchronizer;sendToTrackingPlayersAndSelf(Lnet/minecraft/network/protocol/Packet;)V"))
     private void arclight$sendScaledHealth(CallbackInfo ci, SynchedEntityData entitydatamanager, List<SynchedEntityData.DataValue<?>> list, Set<AttributeInstance> set) {
         if (this.entity instanceof ServerPlayerBridge player) {
-            ((ServerPlayerBridge) player).bridge$getBukkitEntity().injectScaledMaxHealth(set, false);
+            player.bridge$getBukkitEntity().injectScaledMaxHealth(set, false);
         }
     }
 

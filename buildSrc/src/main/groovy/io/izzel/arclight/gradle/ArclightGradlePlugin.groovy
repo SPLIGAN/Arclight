@@ -19,6 +19,9 @@ import java.nio.file.Path
 
 class ArclightGradlePlugin implements Plugin<Project> {
 
+    // Spigot setup is shared across subprojects; serialize so Loom never resolves mid-remap.
+    private static final Object SPIGOT_SETUP_LOCK = new Object()
+
     @Override
     void apply(Project project) {
         def arclight = project.extensions.create('arclight', ArclightExtension, project)
@@ -54,8 +57,11 @@ class ArclightGradlePlugin implements Plugin<Project> {
             project.tasks.build.dependsOn('relocateCraftBukkit')
         }
 
+        // Register before other afterEvaluate work that may resolve compile classpath.
         project.afterEvaluate {
-            setupSpigot(project, arclightRepo)
+            synchronized (SPIGOT_SETUP_LOCK) {
+                setupSpigot(project, arclightRepo)
+            }
         }
     }
 
@@ -123,8 +129,6 @@ class ArclightGradlePlugin implements Plugin<Project> {
             Files.copy(existingSpigotJar, spigotInputJar)
         }
 
-        new LocalMavenHelper("io.izzel.arclight.generated", "spigot", arclight.mcVersion, null, arclightRepo).savePom()
-
         project.logger.lifecycle(":step3 process mappings")
         def processMapping = new ProcessMappingTask(project)
         processMapping.buildData = new File(buildSpigotWorkDir.toFile(), 'BuildData')
@@ -153,6 +157,8 @@ class ArclightGradlePlugin implements Plugin<Project> {
         remapSpigot.inExtraSrg = arclight.extraMapping
         remapSpigot.run()
 
+        // Publish Maven metadata only after jars exist (avoids resolve-during-remap failures).
+        new LocalMavenHelper("io.izzel.arclight.generated", "spigot", arclight.mcVersion, null, arclightRepo).savePom()
         Files.writeString(buildMeta, newBuildMeta)
     }
 }

@@ -83,7 +83,7 @@ dependencies {
     forgeImplementation 'net.minecraftforge:bootstrap:2.1.0'
     forgeImplementation 'net.minecraftforge:bootstrap-api:2.1.0'
 
-    neoforgeImplementation 'net.neoforged.fancymodloader:loader:11.0.13'
+    neoforgeImplementation 'net.neoforged.fancymodloader:loader:11.0.15'
     neoforgeImplementation 'cpw.mods:securejarhandler:3.0.8'
 
     fabricImplementation "net.fabricmc:fabric-loader:${libs.versions.fabric.loader.get()}"
@@ -158,7 +158,8 @@ tasks.register('neoforgeJar', Jar) {
     archiveBaseName.set "arclight-neoforge-${libs.versions.minecraft.get()}"
     manifest.attributes 'Main-Class': 'io.izzel.arclight.server.Launcher'
     manifest.attributes 'Implementation-Title': 'Arclight'
-    manifest.attributes 'Implementation-Version': "arclight-${libs.versions.minecraft.get()}-${project.version}-$gitHash"
+    // Include NeoForge build so .arclight/mod_file re-extracts when NeoForge is bumped.
+    manifest.attributes 'Implementation-Version': "arclight-${libs.versions.minecraft.get()}-nf${libs.versions.neoforge.get()}-${project.version}-$gitHash"
     manifest.attributes 'Implementation-Vendor': 'Arclight Team'
     manifest.attributes 'Implementation-Timestamp': new Date().format("yyyy-MM-dd HH:mm:ss")
     manifest.attributes 'Automatic-Module-Name': 'arclight.boot'

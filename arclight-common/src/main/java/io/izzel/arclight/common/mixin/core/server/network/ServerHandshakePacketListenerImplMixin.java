@@ -51,7 +51,9 @@ public abstract class ServerHandshakePacketListenerImplMixin {
             long connectionThrottle = Bukkit.getServer().getConnectionThrottle();
             InetAddress address = ((InetSocketAddress) this.connection.getRemoteAddress()).getAddress();
             synchronized (throttleTracker) {
-                if (throttleTracker.containsKey(address) && !"127.0.0.1".equals(address.getHostAddress()) && currentTime - throttleTracker.get(address) < connectionThrottle) {
+                String host = address.getHostAddress();
+                boolean loopback = address.isLoopbackAddress() || "127.0.0.1".equals(host) || "::1".equals(host) || "0:0:0:0:0:0:0:1".equals(host);
+                if (throttleTracker.containsKey(address) && !loopback && currentTime - throttleTracker.get(address) < connectionThrottle) {
                     throttleTracker.put(address, currentTime);
                     var component = Component.literal("Connection throttled! Please wait before reconnecting.");
                     this.connection.send(new ClientboundLoginDisconnectPacket(component));

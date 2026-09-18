@@ -11,6 +11,7 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import io.izzel.arclight.common.mixin.core.world.level.storage.SavedDataStorageAccessor;
+import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.SavedDataStorage;
 import org.bukkit.inventory.InventoryHolder;
 import org.spongepowered.asm.mixin.Mixin;
@@ -18,6 +19,8 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+
+import java.util.Optional;
 
 @Mixin(targets = "net/minecraft/server/level/ServerLevel$EntityCallbacks")
 public class ServerLevel_EntityCallbacksMixin {
@@ -35,11 +38,14 @@ public class ServerLevel_EntityCallbacksMixin {
         if (entity instanceof Player player) {
             for (ServerLevel serverLevel : ArclightServer.getMinecraftServer().getAllLevels()) {
                 SavedDataStorage worldData = serverLevel.getDataStorage();
-                for (Object o : ((SavedDataStorageAccessor) worldData).cache().values()) {
-                    if (o instanceof MapItemSavedData map) {
-                        map.carriedByPlayers.remove(player);
-                        ((MapItemSavedDataBridge) map).bridge$getCarriedBy().removeIf(holdingPlayer -> holdingPlayer.player == entity);
-                    }
+                // cache values are Optional<SavedData>, not bare SavedData
+                for (Optional<SavedData> optional : ((SavedDataStorageAccessor) worldData).arclight$getCache().values()) {
+                    optional.ifPresent(data -> {
+                        if (data instanceof MapItemSavedData map) {
+                            map.carriedByPlayers.remove(player);
+                            ((MapItemSavedDataBridge) map).bridge$getCarriedBy().removeIf(holdingPlayer -> holdingPlayer.player == entity);
+                        }
+                    });
                 }
             }
         }

@@ -15,8 +15,9 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(EntityFluidInteraction.class)
 public class EntityFluidInteractionMixin {
 
-    @Redirect(method = "update", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/material/FluidState;getFlow(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/Vec3;"))
-    private Vec3 arclight$captureLavaContact(FluidState fluidState, BlockGetter level, BlockPos pos, Entity entity, boolean pushedByFluid) {
+    // NeoForge 26.1.2.103+ moved getFlow into update(Entity, Predicate); see EntityFluidInteractionMixin_NeoForge.
+    @Redirect(method = "update(Lnet/minecraft/world/entity/Entity;Z)V", require = 0, at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/material/FluidState;getFlow(Lnet/minecraft/world/level/BlockGetter;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/phys/Vec3;"))
+    private Vec3 arclight$captureLavaContact(FluidState fluidState, BlockGetter level, BlockPos pos, Entity entity, boolean ignoreCurrent) {
         if (fluidState.getType().is(FluidTags.LAVA)) {
             ((EntityBridge) entity).bridge$setLastLavaContact(pos.immutable());
         }

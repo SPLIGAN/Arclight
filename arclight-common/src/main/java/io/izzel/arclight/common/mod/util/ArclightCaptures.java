@@ -25,6 +25,20 @@ import java.util.*;
 
 public class ArclightCaptures {
 
+    private static net.minecraft.server.level.ServerPlayer loginPlayer;
+
+    public static void captureLoginPlayer(net.minecraft.server.level.ServerPlayer player) {
+        loginPlayer = player;
+    }
+
+    public static net.minecraft.server.level.ServerPlayer getLoginPlayer() {
+        try {
+            return loginPlayer;
+        } finally {
+            loginPlayer = null;
+        }
+    }
+
     private static Entity entityChangeBlock;
 
     public static void captureEntityChangeBlock(Entity entity) {

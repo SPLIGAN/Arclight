@@ -21,7 +21,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(HopperBlockEntity.class)
 public class HopperBlockEntity_NeoForge {
 
-    @Inject(method = "getContainerOrHandlerAt", at = @At("RETURN"), cancellable = true)
+    // Ambiguous overload exists (BlockState + doubles); bind the 3-arg public entry used by hopper push/pull.
+    @Inject(method = "getContainerOrHandlerAt(Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;Lnet/minecraft/core/Direction;)Lnet/neoforged/neoforge/transfer/item/ContainerOrHandler;", at = @At("RETURN"), cancellable = true)
     private static void arclight$searchDestination(Level level, BlockPos pos, Direction direction, CallbackInfoReturnable<ContainerOrHandler> cir) {
         ContainerOrHandler result = cir.getReturnValue();
         BlockPos hopperPos = pos.relative(direction.getOpposite());

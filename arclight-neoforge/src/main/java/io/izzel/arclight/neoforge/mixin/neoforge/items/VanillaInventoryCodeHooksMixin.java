@@ -15,6 +15,7 @@ import net.neoforged.neoforge.transfer.ResourceHandler;
 import net.neoforged.neoforge.transfer.item.ContainerOrHandler;
 import net.neoforged.neoforge.transfer.item.ItemResource;
 import net.neoforged.neoforge.transfer.item.VanillaInventoryCodeHooks;
+import net.neoforged.neoforge.transfer.resource.Resource;
 import net.neoforged.neoforge.transfer.transaction.TransactionContext;
 import org.bukkit.Bukkit;
 import org.bukkit.craftbukkit.inventory.CraftItemStack;
@@ -25,6 +26,12 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
+/**
+ * NeoForge 26.1 {@link VanillaInventoryCodeHooks} only exposes hopper
+ * {@code insertHook}/{@code extractHook}/{@code getEntityContainerOrHandler}.
+ * There is no {@code dropperInsertHook}; dispenser→container moves stay on
+ * vanilla {@code DispenserBlock}/{@code DispenserBlockEntity} Bukkit hooks.
+ */
 @Mixin(VanillaInventoryCodeHooks.class)
 public abstract class VanillaInventoryCodeHooksMixin {
 
@@ -37,10 +44,13 @@ public abstract class VanillaInventoryCodeHooksMixin {
         }
     }
 
-    @Decorate(method = "insertHook", at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/transfer/ResourceHandler;insert(Lnet/neoforged/neoforge/transfer/item/ItemResource;ILnet/neoforged/neoforge/transfer/transaction/TransactionContext;)I"))
-    private static int arclight$sourceInitiatedMoveItem(HopperBlockEntity hopper, ResourceHandler<ItemResource> handler, ItemResource resource, int amount, TransactionContext tx) throws Throwable {
+    // 26.1: ResourceHandler.insert/extract take Resource (generic bound), not ItemResource in the descriptor.
+    // Decorate arg order: invoke receiver + invoke args, then enclosing-method args (hopper/dest).
+    @Decorate(method = "insertHook", at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/transfer/ResourceHandler;insert(Lnet/neoforged/neoforge/transfer/resource/Resource;ILnet/neoforged/neoforge/transfer/transaction/TransactionContext;)I"), remap = false)
+    private static int arclight$sourceInitiatedMoveItem(ResourceHandler<?> handler, Resource resource, int amount, TransactionContext tx, HopperBlockEntity hopper) throws Throwable {
         try {
-            ItemStack insertStack = resource.toStack(amount);
+            ItemResource itemResource = (ItemResource) resource;
+            ItemStack insertStack = itemResource.toStack(amount);
             if (!insertStack.isEmpty()) {
                 CraftItemStack craftItemStack = CraftItemStack.asCraftMirror(insertStack);
                 Inventory destInventory = HopperTransferContext.toInventory(HopperTransferContext.peek());
@@ -52,16 +62,17 @@ public abstract class VanillaInventoryCodeHooksMixin {
                 }
                 resource = ItemResource.of(CraftItemStack.asNMSCopy(event.getItem()));
             }
-            return (int) DecorationOps.callsite().invoke(resource, amount, tx);
+            return (int) DecorationOps.callsite().invoke(handler, resource, amount, tx);
         } finally {
             HopperTransferContext.clear();
         }
     }
 
-    @Decorate(method = "extractHook", at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/transfer/ResourceHandler;extract(ILnet/neoforged/neoforge/transfer/item/ItemResource;ILnet/neoforged/neoforge/transfer/transaction/TransactionContext;)I"))
-    private static int arclight$nonSourceInitiatedMoveItem(Hopper dest, ResourceHandler<ItemResource> handler, int index, ItemResource resource, int amount, TransactionContext tx) throws Throwable {
+    @Decorate(method = "extractHook", at = @At(value = "INVOKE", target = "Lnet/neoforged/neoforge/transfer/ResourceHandler;extract(ILnet/neoforged/neoforge/transfer/resource/Resource;ILnet/neoforged/neoforge/transfer/transaction/TransactionContext;)I"), remap = false)
+    private static int arclight$nonSourceInitiatedMoveItem(ResourceHandler<?> handler, int index, Resource resource, int amount, TransactionContext tx, Hopper dest) throws Throwable {
         try {
-            ItemStack preview = resource.toStack(amount);
+            ItemResource itemResource = (ItemResource) resource;
+            ItemStack preview = itemResource.toStack(amount);
             if (!preview.isEmpty()) {
                 CraftItemStack original = CraftItemStack.asCraftMirror(preview);
                 Inventory sourceInventory = HopperTransferContext.toInventory(HopperTransferContext.peek());
@@ -76,7 +87,7 @@ public abstract class VanillaInventoryCodeHooksMixin {
                 preview = CraftItemStack.asNMSCopy(event.getItem());
                 resource = ItemResource.of(preview);
             }
-            return (int) DecorationOps.callsite().invoke(index, resource, amount, tx);
+            return (int) DecorationOps.callsite().invoke(handler, index, resource, amount, tx);
         } finally {
             HopperTransferContext.clear();
         }
